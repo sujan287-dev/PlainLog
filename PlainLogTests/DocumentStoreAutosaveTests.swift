@@ -200,4 +200,133 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         store.updateText("original")
         XCTAssertFalse(store.isDirty)
     }
+
+    // MARK: - saveNow must never create a blank pending file (Feature 03/06)
+
+    func testSaveNowOnEmptyPendingFileDoesNotCreateFile() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        await store.saveNow()
+
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: testFolder,
+            includingPropertiesForKeys: nil,
+            options: []
+        )
+        XCTAssertEqual(contents.count, 0)
+        XCTAssertEqual(store.saveState, .idle)
+    }
+
+    func testSaveNowBeforeLoadCompletesDoesNotCreateBlankFile() async throws {
+        // No load() at all: folderURL is nil, so this must fail safely
+        // rather than write anywhere, and never crash.
+        await store.saveNow()
+
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: testFolder,
+            includingPropertiesForKeys: nil,
+            options: []
+        )
+        XCTAssertEqual(contents.count, 0)
+    }
+
+    func testSaveNowOnPendingFileWithMeaningfulContentStillSaves() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        store.updateText("# Log\n- [ ] task")
+        await store.saveNow()
+
+        let url = DailyFilename(date: date).url(in: testFolder)
+        XCTAssertEqual(try fileIO.readText(at: url), "# Log\n- [ ] task")
+        XCTAssertFalse(store.isPendingNewFile)
+        XCTAssertEqual(store.saveState, .saved)
+    }
+
+    func testSaveNowOnExistingFileClearedToEmptyStillSaves() async throws {
+        // The blank-file gate must only block creating a NEW file — clearing
+        // an EXISTING file to empty is a deliberate user action and must
+        // still be allowed to save.
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("original", to: url)
+
+        await store.load(date: date, in: testFolder)
+        store.updateText("")
+        await store.saveNow()
+
+        XCTAssertEqual(try fileIO.readText(at: url), "")
+        XCTAssertEqual(store.saveState, .saved)
+    }
+
+    // MARK: - load() cancels stale autosave (cross-document bleed, Feature 06)
+
+    func testLoadCancelsPendingAutosave() async throws {
+        let dateA = try makeDate(year: 2026, month: 8, day: 26)
+        let dateB = try makeDate(year: 2026, month: 8, day: 27)
+
+        await store.load(date: dateA, in: testFolder)
+        store.updateText("day A text")
+
+        // Switch immediately — no sleep — while the 500ms autosave debounce
+        // from the "day A text" edit is still pending.
+        await store.load(date: dateB, in: testFolder)
+
+        try await Task.sleep(for: .milliseconds(700))
+
+        let urlA = DailyFilename(date: dateA).url(in: testFolder)
+        let urlB = DailyFilename(date: dateB).url(in: testFolder)
+
+        XCTAssertFalse(
+            fileIO.fileExists(at: urlA),
+            "Day A was never explicitly saved before switching away; it must not appear on disk."
+        )
+        XCTAssertFalse(
+            fileIO.fileExists(at: urlB),
+            "Day B is an empty pending file; the stale day-A autosave must not create it, let alone with day A's text."
+        )
+    }
+
+    func testLoadAfterDebounceFiredStillConsistent() async throws {
+        let dateA = try makeDate(year: 2026, month: 8, day: 26)
+        let dateB = try makeDate(year: 2026, month: 8, day: 27)
+
+        await store.load(date: dateA, in: testFolder)
+        store.updateText("day A text")
+
+        // Let the autosave actually complete before switching.
+        try await Task.sleep(for: .milliseconds(700))
+
+        let urlA = DailyFilename(date: dateA).url(in: testFolder)
+        XCTAssertEqual(try fileIO.readText(at: urlA), "day A text")
+
+        await store.load(date: dateB, in: testFolder)
+
+        let urlB = DailyFilename(date: dateB).url(in: testFolder)
+        XCTAssertFalse(fileIO.fileExists(at: urlB))
+    }
+
+    // MARK: - performSave serialization (no overlapping writes)
+
+    func testSequentialSaveNowCallsConverge() async throws {
+        // Not a true concurrency test (each saveNow() awaits completion
+        // before the next starts) — this guards that the isSaving/
+        // saveRequestedWhileSaving bookkeeping doesn't regress normal,
+        // sequential save usage.
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("initial", to: url)
+
+        await store.load(date: date, in: testFolder)
+
+        store.updateText("first")
+        await store.saveNow()
+        store.updateText("second")
+        await store.saveNow()
+
+        XCTAssertEqual(try fileIO.readText(at: url), "second")
+        XCTAssertEqual(store.saveState, .saved)
+        XCTAssertFalse(store.isDirty)
+    }
 }

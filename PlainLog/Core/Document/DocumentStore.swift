@@ -99,9 +99,13 @@ final class DocumentStore {
     /// Loads the daily file for `date` in `folder` via FileIOService.
     /// File I/O runs off the main actor; state is applied on the main actor.
     func load(date: Date, in folder: URL) async {
-        // Cancel any pending parse debounce from the previous document before
-        // this one's state overwrites currentText/summary underneath it.
+        // Cancel both pending debounces from the previous document before
+        // this one's state overwrites currentText/folderURL underneath them.
+        // A stale autosave that fires after folderURL/selectedDate have
+        // already moved on to the new document would capture the OLD text
+        // but write to the NEW document's target URL — cross-document bleed.
         parseTask?.cancel()
+        autosaveTask?.cancel()
 
         selectedDate = date
         folderURL = folder
@@ -224,9 +228,35 @@ final class DocumentStore {
         await performSave()
     }
 
+    /// True while a save write is physically in flight. Guards against two
+    /// overlapping writes to the same file (e.g. an autosave firing the same
+    /// instant the app backgrounds and triggers saveNow()) — NSFileCoordinator
+    /// wouldn't corrupt the file, but out-of-order completion could leave
+    /// stale bookkeeping or, if the target document has since changed
+    /// (folder/date switch), write into the wrong file.
+    private var isSaving = false
+
+    /// Set when a save is requested while one is already in flight. Drained
+    /// by the in-flight save's completion so the request is never silently
+    /// dropped — it's picked up with whatever currentText is by then.
+    private var saveRequestedWhileSaving = false
+
     /// Core save logic. Coordinates with FileIOService, handles errors,
     /// updates SaveState. Called by autosave() and saveNow().
     private func performSave() async {
+        guard !isSaving else {
+            saveRequestedWhileSaving = true
+            return
+        }
+        isSaving = true
+        defer {
+            isSaving = false
+            if saveRequestedWhileSaving {
+                saveRequestedWhileSaving = false
+                Task { await self.performSave() }
+            }
+        }
+
         guard let folderURL, let targetFileURL else {
             saveState = .saveFailed(reason: "No folder connected")
             return
@@ -237,11 +267,23 @@ final class DocumentStore {
         let io = fileIO
         let text = currentText
         let url = targetFileURL
+        let meaningful = hasMeaningfulContent
 
         // Explicit closure return type: `.success`/`.failure` shorthand can't
         // be inferred without it, since Task.detached's Success is otherwise
-        // unbound at the point the closure body is type-checked.
-        let result = await Task.detached(priority: .userInitiated) { () -> Result<Void, FileIOError> in
+        // unbound at the point the closure body is type-checked. `nil` means
+        // "correctly skipped, not an error" (see the Feature 03 gate below).
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Void, FileIOError>? in
+            // Feature 03: never create a blank file. Checked against the
+            // disk here — not the isPendingNewFile flag, which is only
+            // accurate once a load has finished applying — so this still
+            // holds if saveNow() is called before the initial load
+            // completes (folderURL is already set; currentText is still "").
+            // Done off the main actor, honoring FileIOService's threading
+            // contract, alongside the write itself.
+            guard meaningful || io.fileExists(at: url) else {
+                return nil
+            }
             do {
                 try io.writeText(text, to: url)
                 return .success(())
@@ -253,6 +295,9 @@ final class DocumentStore {
         }.value
 
         switch result {
+        case nil:
+            saveState = .idle
+
         case .success:
             // Use `text` (what was actually written), not the live `currentText`
             // property — the user may have kept typing during the write above,
