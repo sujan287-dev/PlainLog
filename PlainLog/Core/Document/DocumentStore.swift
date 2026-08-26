@@ -358,6 +358,13 @@ final class DocumentStore {
         await navigate(to: target)
     }
 
+    /// Navigate to an arbitrary date (used by the history browser).
+    /// Reuses all of navigate(to:)'s save-before-switch, pending-file discard,
+    /// and dual-task-cancellation machinery.
+    func goTo(date target: Date) async {
+        await navigate(to: target)
+    }
+
     /// Core save-before-switch logic (Feature 09) shared by all navigation
     /// entry points above.
     private func navigate(to target: Date) async {

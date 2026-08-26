@@ -8,6 +8,7 @@ struct EditorView: View {
     let store: DocumentStore
 
     @State private var showingFolderHealth = false
+    @State private var showingHistory = false
     @State private var editorMode: EditorMode = .editing
 
     enum EditorMode: Hashable {
@@ -77,6 +78,14 @@ struct EditorView: View {
 
                 Spacer()
 
+                // History browser entry point (Feature 09).
+                Button {
+                    showingHistory = true
+                } label: {
+                    Image(systemName: "calendar")
+                }
+                .accessibilityLabel("History")
+
                 // Edit / Preview toggle
                 Picker("Mode", selection: $editorMode) {
                     Text("Edit").tag(EditorMode.editing)
@@ -97,6 +106,23 @@ struct EditorView: View {
         .padding(.vertical, 8)
         .sheet(isPresented: $showingFolderHealth) {
             FolderHealthView()
+        }
+        .sheet(isPresented: $showingHistory) {
+            HistoryBrowserView(
+                folderURL: store.folderURL,
+                selectedDate: store.selectedDate,
+                onSelect: { selected in
+                    // Dismiss first, then navigate on the next runloop turn
+                    // (matches the WelcomeView fileImporter fix) — presenting
+                    // the download/conflict flow that navigate(to:) can
+                    // trigger in the same tick as this sheet's dismissal
+                    // risks the same present-while-dismissing race.
+                    showingHistory = false
+                    Task { @MainActor in
+                        await store.goTo(date: selected)
+                    }
+                }
+            )
         }
     }
 

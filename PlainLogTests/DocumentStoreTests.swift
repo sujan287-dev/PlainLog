@@ -393,4 +393,68 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertTrue(store.isDirty, "A reload would have reset isDirty; it must not have occurred.")
         XCTAssertEqual(store.currentText, "some text")
     }
+
+    // MARK: - goTo(date:) arbitrary navigation (Feature 09, history browser)
+
+    func testGoToArbitraryDateMovesSelectedDate() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        let cal = localCalendar()
+        let expectedTarget = try XCTUnwrap(cal.date(byAdding: .day, value: 5, to: date))
+
+        await store.goTo(date: expectedTarget)
+
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: expectedTarget))
+        XCTAssertEqual(
+            DailyFilename(date: store.selectedDate).dateStamp,
+            DailyFilename(date: expectedTarget).dateStamp
+        )
+    }
+
+    func testGoToSameDayIsNoOp() async throws {
+        let today = Date()
+        await store.load(date: today, in: testFolder)
+        let originalSelectedDate = store.selectedDate
+
+        await store.goTo(date: today)
+
+        XCTAssertEqual(store.selectedDate, originalSelectedDate)
+    }
+
+    func testGoToSavesDirtyDocumentBeforeSwitching() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("original", to: url)
+
+        await store.load(date: date, in: testFolder)
+        store.updateText("modified")
+        XCTAssertTrue(store.isDirty)
+
+        let cal = localCalendar()
+        let target = try XCTUnwrap(cal.date(byAdding: .day, value: 5, to: date))
+
+        await store.goTo(date: target)
+
+        XCTAssertEqual(try fileIO.readText(at: url), "modified")
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: target))
+    }
+
+    func testGoToDiscardsEmptyPendingFile() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        store.updateText("   \n\t  ")
+        XCTAssertTrue(store.isPendingNewFile)
+        XCTAssertFalse(store.hasMeaningfulContent)
+
+        let cal = localCalendar()
+        let target = try XCTUnwrap(cal.date(byAdding: .day, value: 5, to: date))
+
+        await store.goTo(date: target)
+
+        let url = DailyFilename(date: date).url(in: testFolder)
+        XCTAssertFalse(fileIO.fileExists(at: url))
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: target))
+    }
 }
