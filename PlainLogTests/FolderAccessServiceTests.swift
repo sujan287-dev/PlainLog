@@ -1,6 +1,7 @@
 import XCTest
 @testable import PlainLog
 
+@MainActor
 final class FolderAccessServiceTests: XCTestCase {
 
     func testInitialStateIsNoFolderSelectedWhenStoreEmpty() {
