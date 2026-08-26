@@ -132,8 +132,14 @@ enum InlineParser {
         }
         guard i < s.endIndex && s[i] == "]" else { return nil }
         guard !name.isEmpty else { return nil }
-        // Validate name characters (a-z, A-Z, 0-9, -, _)
-        guard name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else {
+        // Spec (Feature 10): tag names allow only ASCII a-z, A-Z, 0-9, -, _.
+        guard name.allSatisfy({ char in
+            (char >= "a" && char <= "z") ||
+            (char >= "A" && char <= "Z") ||
+            (char >= "0" && char <= "9") ||
+            char == "-" ||
+            char == "_"
+        }) else {
             return nil
         }
         return (name, s.index(after: i))
