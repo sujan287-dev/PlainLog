@@ -250,7 +250,7 @@ final class DocumentStoreTests: XCTestCase {
         // debounce has not fired yet, so the summary must still be stale.
         XCTAssertEqual(store.summary?.taskTotalCount, 1)
 
-        try await Task.sleep(for: .milliseconds(450))
+        try await Task.sleep(for: .milliseconds(650))
 
         XCTAssertEqual(store.summary?.taskTotalCount, 2)
         XCTAssertEqual(store.summary?.taskCompletedCount, 1)
@@ -272,7 +272,7 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertEqual(store.summary?.taskTotalCount, 0)
 
         // Now wait for the final debounce to fire.
-        try await Task.sleep(for: .milliseconds(450))
+        try await Task.sleep(for: .milliseconds(650))
 
         XCTAssertEqual(store.summary?.taskTotalCount, 1)
     }

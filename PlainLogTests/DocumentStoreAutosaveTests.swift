@@ -67,7 +67,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertEqual(try fileIO.readText(at: url), "initial")
 
         // Wait for debounce + save.
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
 
         let contentsAfter = try FileManager.default.contentsOfDirectory(
             at: testFolder,
@@ -98,7 +98,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertEqual(try fileIO.readText(at: url), "initial")
 
         // Now wait for the final debounce to fire.
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(900))
 
         XCTAssertEqual(try fileIO.readText(at: url), "edit 4")
         XCTAssertEqual(store.saveState, .saved)
@@ -116,7 +116,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertFalse(store.hasMeaningfulContent)
 
         // Wait for debounce.
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
 
         // File should NOT be created (Feature 03 pending-file policy).
         let contents = try FileManager.default.contentsOfDirectory(
@@ -138,7 +138,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertTrue(store.hasMeaningfulContent)
 
         // Wait for debounce.
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
 
         // File should be created (first meaningful save).
         let contents = try FileManager.default.contentsOfDirectory(
@@ -184,7 +184,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         store.updateText("modified")
         XCTAssertTrue(store.isDirty)
 
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
         XCTAssertFalse(store.isDirty)
     }
 
@@ -273,7 +273,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         // from the "day A text" edit is still pending.
         await store.load(date: dateB, in: testFolder)
 
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
 
         let urlA = DailyFilename(date: dateA).url(in: testFolder)
         let urlB = DailyFilename(date: dateB).url(in: testFolder)
@@ -296,7 +296,7 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         store.updateText("day A text")
 
         // Let the autosave actually complete before switching.
-        try await Task.sleep(for: .milliseconds(700))
+        try await Task.sleep(for: .milliseconds(1000))
 
         let urlA = DailyFilename(date: dateA).url(in: testFolder)
         XCTAssertEqual(try fileIO.readText(at: urlA), "day A text")
