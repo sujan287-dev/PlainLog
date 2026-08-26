@@ -200,6 +200,68 @@ final class FileIOService {
         }
     }
 
+    // MARK: - Save as Copy (Feature 08)
+
+    /// Saves the given text as a conflict copy in the folder (Feature 08).
+    /// Generates a non-colliding copy name, then writes via the same coordinated,
+    /// atomic, cloud-gated writeText path. Returns the new file URL.
+    ///
+    /// `calendar` is injectable for deterministic tests; production passes nil
+    /// to use Gregorian + device local timezone (consistent with DailyFilename).
+    func saveAsCopy(
+        text: String,
+        forSaveAt saveMoment: Date,
+        in folder: URL,
+        calendar: Calendar? = nil
+    ) throws -> URL {
+        let cal = calendar ?? Self.gregorianLocalCalendar()
+        let existingNames = listFilenames(in: folder, reservingICloudPlaceholders: true)
+        let copyName = ConflictCopyNamer.nextCopyName(
+            forSaveAt: saveMoment,
+            existingNames: existingNames,
+            calendar: cal
+        )
+        let copyURL = folder.appendingPathComponent(copyName)
+        try writeText(text, to: copyURL)
+        return copyURL
+    }
+
+    /// Lists filenames in the folder. When `reservingICloudPlaceholders` is true,
+    /// an evicted iCloud placeholder also reserves its base name, so we never
+    /// collide with a cloud-only file's real name.
+    ///
+    /// A placeholder's real-world filename is `.<original>.icloud` — a leading
+    /// dot AND the trailing suffix — not just the trailing suffix, so both are
+    /// stripped when computing the reserved base name.
+    private func listFilenames(in folder: URL, reservingICloudPlaceholders: Bool) -> Set<String> {
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: nil,
+            options: []
+        ) else {
+            return []
+        }
+        var names = Set<String>()
+        for url in contents {
+            let name = url.lastPathComponent
+            names.insert(name)
+            if reservingICloudPlaceholders, name.hasSuffix(".icloud") {
+                var base = String(name.dropLast(".icloud".count))
+                if base.hasPrefix(".") {
+                    base.removeFirst()
+                }
+                names.insert(base)
+            }
+        }
+        return names
+    }
+
+    private static func gregorianLocalCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        return calendar
+    }
+
     // MARK: - External Change Detection (Feature 08)
 
     /// Captures a snapshot of the file's current state.

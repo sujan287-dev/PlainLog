@@ -349,4 +349,131 @@ final class FileIOServiceTests: XCTestCase {
         let state = service.openDailyFile(for: Date(), in: testFolder)
         XCTAssertEqual(state, .pending)
     }
+
+    // MARK: - Conflict Copy Naming (pure, fully CI-testable)
+
+    private func utcGregorianCalendar() -> Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? .current
+        return cal
+    }
+
+    private func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int) throws -> Date {
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = day
+        comps.hour = hour
+        comps.minute = minute
+        comps.second = 0
+        return try XCTUnwrap(utcGregorianCalendar().date(from: comps))
+    }
+
+    func testCopyNameNoCollision() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        let name = ConflictCopyNamer.nextCopyName(
+            forSaveAt: moment,
+            existingNames: [],
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(name, "2026-08-26-copy-1530.md")
+    }
+
+    func testCopyNameCollisionAppendsCounter() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        let name = ConflictCopyNamer.nextCopyName(
+            forSaveAt: moment,
+            existingNames: ["2026-08-26-copy-1530.md"],
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(name, "2026-08-26-copy-1530-2.md")
+    }
+
+    func testCopyNameMultipleCollisions() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        let name = ConflictCopyNamer.nextCopyName(
+            forSaveAt: moment,
+            existingNames: [
+                "2026-08-26-copy-1530.md",
+                "2026-08-26-copy-1530-2.md",
+                "2026-08-26-copy-1530-3.md"
+            ],
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(name, "2026-08-26-copy-1530-4.md")
+    }
+
+    func testCopyNameZeroPadsTime() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 9, minute: 5)
+        let name = ConflictCopyNamer.nextCopyName(
+            forSaveAt: moment,
+            existingNames: [],
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(name, "2026-08-26-copy-0905.md")
+    }
+
+    // MARK: - saveAsCopy (service-level)
+
+    func testSaveAsCopyCreatesFileAndReturnsURL() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        let text = "copied content"
+        let url = try service.saveAsCopy(
+            text: text,
+            forSaveAt: moment,
+            in: testFolder,
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(url.lastPathComponent, "2026-08-26-copy-1530.md")
+        XCTAssertEqual(try service.readText(at: url), text)
+    }
+
+    func testSaveAsCopyAvoidsExistingCopy() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        // Pre-create the primary copy name so the namer must pick -2.
+        let primary = testFolder.appendingPathComponent("2026-08-26-copy-1530.md")
+        try service.writeText("existing", to: primary)
+
+        let url = try service.saveAsCopy(
+            text: "new copy",
+            forSaveAt: moment,
+            in: testFolder,
+            calendar: utcGregorianCalendar()
+        )
+        XCTAssertEqual(url.lastPathComponent, "2026-08-26-copy-1530-2.md")
+        // Original untouched.
+        XCTAssertEqual(try service.readText(at: primary), "existing")
+    }
+
+    func testSaveAsCopyReservesICloudPlaceholderNames() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        // Simulate an evicted iCloud copy placeholder.
+        let placeholder = testFolder.appendingPathComponent("2026-08-26-copy-1530.md.icloud")
+        try Data("placeholder".utf8).write(to: placeholder)
+
+        let url = try service.saveAsCopy(
+            text: "new copy",
+            forSaveAt: moment,
+            in: testFolder,
+            calendar: utcGregorianCalendar()
+        )
+        // Base name is reserved by the placeholder, so namer picks -2.
+        XCTAssertEqual(url.lastPathComponent, "2026-08-26-copy-1530-2.md")
+    }
+
+    func testSaveAsCopyLeavesNoTempFiles() throws {
+        let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
+        _ = try service.saveAsCopy(
+            text: "x",
+            forSaveAt: moment,
+            in: testFolder,
+            calendar: utcGregorianCalendar()
+        )
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: testFolder,
+            includingPropertiesForKeys: nil,
+            options: []
+        )
+        XCTAssertEqual(contents.map(\.lastPathComponent).sorted(), ["2026-08-26-copy-1530.md"])
+    }
 }
