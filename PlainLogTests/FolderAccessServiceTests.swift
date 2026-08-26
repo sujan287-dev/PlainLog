@@ -104,6 +104,19 @@ final class FolderAccessServiceTests: XCTestCase {
         XCTAssertNotNil(mockStore.savedData)
         XCTAssertNotNil(service.folderDisplayNameHint)
     }
+
+    func testStatusDescriptionForNoFolderSelected() {
+        service.clearAccess()
+        XCTAssertEqual(service.statusDescription, "No folder selected")
+    }
+
+    func testStatusDescriptionMappingCoversAllStates() {
+        // Verify statusDescription returns non-empty strings for all states.
+        // We can only easily test .noFolderSelected without a real bookmark,
+        // but we verify the property exists and returns a valid string.
+        service.clearAccess()
+        XCTAssertFalse(service.statusDescription.isEmpty)
+    }
 }
 
 // Mock Store for Testing

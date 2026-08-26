@@ -17,6 +17,19 @@ final class FolderAccessService {
         return nil
     }
 
+    /// Human-readable status description for the Folder Health screen.
+    /// Maps FolderAccessState to user-facing text per PLAN.md Feature 11.
+    var statusDescription: String {
+        switch state {
+        case .folderReady:       return "Connected"
+        case .noFolderSelected:  return "No folder selected"
+        case .resolvingBookmark: return "Connecting…"
+        case .bookmarkStale:     return "Needs reconnection"
+        case .accessLost:        return "Access lost"
+        case .folderUnwritable:  return "Folder unwritable"
+        }
+    }
+
     /// The last known display name of the user's folder.
     /// Stored privately in UserDefaults — never in the user's folder.
     var folderDisplayNameHint: String? {
