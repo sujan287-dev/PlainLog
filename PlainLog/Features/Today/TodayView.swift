@@ -1,32 +1,29 @@
 import SwiftUI
 
-/// Today Screen placeholder for Sprint 1.
-/// Real editor UI arrives in Sprint 3.
-/// Includes a Folder Health button to access the folder status screen.
+/// Today Screen placeholder for Sprint 2.
+/// Real editor UI arrives in Sprint 3. Currently hosts the temporary Sprint 2
+/// File I/O harness and the Folder Health sheet.
 struct TodayView: View {
     @Environment(FolderAccessService.self) private var folderAccessService
     @State private var showingFolderHealth = false
 
     var body: some View {
         VStack(spacing: 20) {
-            Spacer()
-
             Text("Today Screen")
                 .font(.largeTitle)
                 .bold()
 
             if let url = folderAccessService.currentFolderURL {
-                Text("Connected to:\n\(url.lastPathComponent)")
-                    .multilineTextAlignment(.center)
+                Text("Connected to: \(url.lastPathComponent)")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Text("Editor coming in Sprint 3.")
-                .foregroundStyle(.tertiary)
+            // SPRINT 2 TEMPORARY HARNESS — removed/replaced in Sprint 3.
+            FileIOHarnessView()
 
             Spacer()
 
-            // Folder Health access button
             Button {
                 showingFolderHealth = true
             } label: {
@@ -37,7 +34,7 @@ struct TodayView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
         }
-        .padding(32)
+        .padding(24)
         .sheet(isPresented: $showingFolderHealth) {
             FolderHealthView()
         }
