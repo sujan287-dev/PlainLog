@@ -76,10 +76,9 @@ final class MarkdownParserTests: XCTestCase {
         **bold** and *italic*
         """
         let nodes = MarkdownParser.parse(text)
-        XCTAssertNotNil(nodes)
         // 7 lines: heading, checkbox, checkbox, bullet, numbered, blank, paragraph.
         // (Verified against the literal input — see Piece 3.4 self-review.)
-        XCTAssertEqual(nodes?.count, 7)
+        XCTAssertEqual(nodes.count, 7)
     }
 
     // MARK: - Inline parsing

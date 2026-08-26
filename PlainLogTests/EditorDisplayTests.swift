@@ -95,4 +95,22 @@ final class EditorDisplayTests: XCTestCase {
             "12.5"
         )
     }
+
+    func testExpenseTotalFormatterIsThreadSafe() async throws {
+        // A fresh NumberFormatter per call (not a shared static instance) is
+        // what makes this safe. Calling concurrently from multiple detached
+        // tasks must not crash and must produce identical, correct output.
+        let total = try XCTUnwrap(Decimal(string: "118.75"))
+
+        await withTaskGroup(of: String.self) { group in
+            for _ in 0..<20 {
+                group.addTask {
+                    ExpenseTotalDisplay.text(for: total)
+                }
+            }
+            for await result in group {
+                XCTAssertEqual(result, "118.75")
+            }
+        }
+    }
 }

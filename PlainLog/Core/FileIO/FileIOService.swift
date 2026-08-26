@@ -53,7 +53,16 @@ final class FileIOService {
         coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
             blockDidRun = true
             do {
+                // Re-check the iCloud gate on the coordinated URL, right
+                // before the read. The pre-check above can race with iCloud
+                // eviction in the gap before this block runs; NSFileCoordinator
+                // serializes against iCloud's own coordination, so re-asserting
+                // here on the coordinated URL closes that gap rather than
+                // just narrowing it.
+                try refuseCloudOnlyFile(at: coordinatedURL)
                 text = try String(contentsOf: coordinatedURL, encoding: .utf8)
+            } catch let error as FileIOError {
+                blockError = error
             } catch let error as CocoaError where error.code == .fileReadCorruptFile
                 || error.code == .fileReadInapplicableStringEncoding {
                 // The file is readable but its bytes aren't valid UTF-8.
@@ -106,10 +115,16 @@ final class FileIOService {
         coordinator.coordinate(writingItemAt: url, options: [.forReplacing], error: &coordinationError) { coordinatedURL in
             blockDidRun = true
             do {
+                // Re-check the iCloud gate on the coordinated URL, right
+                // before the write. See the matching comment in readText(at:)
+                // — same reasoning, write side.
+                try refuseCloudOnlyFile(at: coordinatedURL)
                 // .atomic writes to a transient temp file and renames it into
                 // place. The temp file exists for microseconds and never lingers
                 // in the user folder (PLAN.md §11 temporary file policy).
                 try data.write(to: coordinatedURL, options: [.atomic])
+            } catch let error as FileIOError {
+                blockError = error
             } catch {
                 blockError = .underlying(error.localizedDescription)
             }

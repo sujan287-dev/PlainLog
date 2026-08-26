@@ -1,13 +1,13 @@
 import Foundation
 
 /// Line-oriented block parser for the Feature 05 subset.
-/// Pure, no I/O, no state. Returns nil on any unrecoverable parse error
-/// (caller falls back to raw text).
+/// Pure, no I/O, no state. Every line is classified as some block (falling
+/// through to .paragraph as the catch-all), so this can never fail — unlike
+/// InlineParser, which can and does return nil for malformed inline syntax.
 enum MarkdownParser {
 
     /// Parse a Markdown document into block-level nodes.
-    /// Returns nil if parsing hits an unrecoverable error (triggers fallback).
-    static func parse(_ text: String) -> [MarkdownNode]? {
+    static func parse(_ text: String) -> [MarkdownNode] {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         var nodes: [MarkdownNode] = []
         var i = 0

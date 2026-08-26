@@ -111,9 +111,9 @@ struct EditorView: View {
     }
 
     private var previewModeContent: some View {
-        // Parse once per render. If parsing fails, renderer falls back to raw text.
-        let nodes = MarkdownParser.parse(store.currentText)
-        return MarkdownRenderer(rawText: store.currentText, nodes: nodes)
+        // Parse once per render. Block-level parsing never fails; the
+        // renderer's inline fallback still covers malformed inline syntax.
+        MarkdownRenderer(nodes: MarkdownParser.parse(store.currentText))
     }
 
     // MARK: - Bottom bar

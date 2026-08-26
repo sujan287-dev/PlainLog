@@ -1,30 +1,20 @@
 import SwiftUI
 
 /// Renders parsed Markdown nodes as SwiftUI views.
-/// If parsing failed (nodes is nil), renders the raw text in a monospaced
-/// scroll view as a fallback per Feature 05.
+/// Block-level parsing (MarkdownParser) never fails, so there's no raw-text
+/// fallback at this level — only renderInline's inline-parse fallback below,
+/// which can genuinely fail on malformed inline syntax.
 struct MarkdownRenderer: View {
-    let rawText: String
-    let nodes: [MarkdownNode]?
+    let nodes: [MarkdownNode]
 
     var body: some View {
-        if let nodes {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(nodes.enumerated()), id: \.offset) { _, node in
-                        renderNode(node)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(nodes.enumerated()), id: \.offset) { _, node in
+                    renderNode(node)
                 }
-                .padding()
             }
-        } else {
-            // Fallback: render raw text in monospaced scroll view.
-            ScrollView {
-                Text(rawText)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-            }
+            .padding()
         }
     }
 

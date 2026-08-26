@@ -45,27 +45,30 @@ enum EditorCopy {
 /// Feature 10 summary bar's expense-total formatting.
 enum ExpenseTotalDisplay {
 
-    /// Locale is explicitly en_US_POSIX, NEVER the device locale: PLAN.md's
-    /// summary bar example and this app's tests use "." as the decimal
-    /// separator (e.g. "118.75"). The device locale could format the same
-    /// value as "118,75", breaking display parity with the spec and making
-    /// output non-deterministic across regions. Grouping is disabled so no
-    /// comma can appear anywhere in the output, in either role (decimal or
-    /// thousands separator).
-    private static let formatter: NumberFormatter = {
+    /// Formats a Decimal expense total per the Feature 10 summary bar example
+    /// ("Expenses: 118.75"). Money stays Decimal end-to-end — bridged through
+    /// NSDecimalNumber only for this formatter call, never through Double.
+    ///
+    /// A fresh NumberFormatter is built on every call rather than shared as a
+    /// static instance: NumberFormatter is NOT thread-safe, and Sprint 5's
+    /// ExportKit will call this from a background task. Construction cost is
+    /// negligible at the call rates here (summary-bar renders, debounced to
+    /// 300ms+ intervals; future weekly-export runs).
+    static func text(for total: Decimal) -> String {
         let formatter = NumberFormatter()
+        // Locale is explicitly en_US_POSIX, NEVER the device locale: PLAN.md's
+        // summary bar example and this app's tests use "." as the decimal
+        // separator (e.g. "118.75"). The device locale could format the same
+        // value as "118,75", breaking display parity with the spec and making
+        // output non-deterministic across regions. Grouping is disabled so no
+        // comma can appear anywhere in the output, in either role (decimal or
+        // thousands separator).
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.numberStyle = .decimal
         formatter.usesGroupingSeparator = false
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
-        return formatter
-    }()
 
-    /// Formats a Decimal expense total per the Feature 10 summary bar example
-    /// ("Expenses: 118.75"). Money stays Decimal end-to-end — bridged through
-    /// NSDecimalNumber only for this formatter call, never through Double.
-    static func text(for total: Decimal) -> String {
         let number = NSDecimalNumber(decimal: total)
         if let formatted = formatter.string(from: number) {
             return formatted
