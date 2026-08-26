@@ -54,8 +54,13 @@ final class FileIOService {
             blockDidRun = true
             do {
                 text = try String(contentsOf: coordinatedURL, encoding: .utf8)
-            } catch let error as CocoaError where error.code == .fileReadInapplicableStringEncoding {
+            } catch let error as CocoaError where error.code == .fileReadCorruptFile
+                || error.code == .fileReadInapplicableStringEncoding {
                 // The file is readable but its bytes aren't valid UTF-8.
+                // Foundation has been observed to throw .fileReadCorruptFile
+                // for this specific failure via String(contentsOf:encoding:);
+                // .fileReadInapplicableStringEncoding is kept as a fallback
+                // since this isn't documented, verifiable behavior.
                 blockError = .encodingFailed
             } catch {
                 // Any other failure (permissions, disk error, etc.) is a
