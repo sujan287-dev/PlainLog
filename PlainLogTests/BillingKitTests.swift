@@ -9,6 +9,13 @@ import StoreKitTest
 /// Each test uses its own UserDefaults suite (never .standard) to avoid
 /// cross-test pollution of the locally-persisted entitlement, torn down
 /// via removePersistentDomain in tearDown.
+///
+/// Every StoreKit-calling method is wrapped in runBounded(): a first CI run
+/// (run 33013584600) hung indefinitely partway through restorePurchases()'s
+/// AppStore.sync() call, with no completion after 30+ minutes — this is a
+/// hard timeout so a repeat of that class of hang fails ONE test cleanly
+/// instead of blocking the whole CI job again (build.yml also now has a
+/// step-level timeout-minutes as a second, independent backstop).
 @MainActor
 final class BillingKitTests: XCTestCase {
 
@@ -43,13 +50,33 @@ final class BillingKitTests: XCTestCase {
         return session
     }
 
+    /// Bounds a StoreKit async call with a hard timeout. Normal StoreKitTest
+    /// calls resolve in well under a second; 15s is generous headroom, not
+    /// an expected real duration — this exists purely as a safety net.
+    private func runBounded(
+        timeout: TimeInterval = 15,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ operation: @escaping () async -> Void
+    ) {
+        let didComplete = expectation(description: "StoreKit call completes")
+        Task {
+            await operation()
+            didComplete.fulfill()
+        }
+        let result = XCTWaiter().wait(for: [didComplete], timeout: timeout)
+        if result != .completed {
+            XCTFail("StoreKit call did not complete within \(timeout)s — likely hung", file: file, line: line)
+        }
+    }
+
     // MARK: - Product loading
 
-    func testLoadProductsSucceeds() async throws {
+    func testLoadProductsSucceeds() throws {
         session = try makeSession()
         let billing = BillingKit(userDefaults: userDefaults)
 
-        await billing.loadProducts()
+        runBounded { await billing.loadProducts() }
 
         XCTAssertEqual(billing.products.count, 1)
         XCTAssertEqual(billing.products.first?.id, "com.plainlog.ios.pro")
@@ -58,12 +85,12 @@ final class BillingKitTests: XCTestCase {
 
     // MARK: - Purchase
 
-    func testPurchaseSucceeds() async throws {
+    func testPurchaseSucceeds() throws {
         session = try makeSession()
         let billing = BillingKit(userDefaults: userDefaults)
 
-        await billing.loadProducts()
-        await billing.purchase()
+        runBounded { await billing.loadProducts() }
+        runBounded { await billing.purchase() }
 
         XCTAssertTrue(billing.isProEnabled)
         XCTAssertEqual(billing.purchaseState, .purchased)
@@ -89,12 +116,12 @@ final class BillingKitTests: XCTestCase {
 
     // MARK: - Restore
 
-    func testRestorePurchases() async throws {
+    func testRestorePurchases() throws {
         session = try makeSession()
 
         let first = BillingKit(userDefaults: userDefaults)
-        await first.loadProducts()
-        await first.purchase()
+        runBounded { await first.loadProducts() }
+        runBounded { await first.purchase() }
         XCTAssertTrue(first.isProEnabled)
 
         // Simulate a fresh launch: a second instance over the SAME
@@ -102,7 +129,7 @@ final class BillingKitTests: XCTestCase {
         // one) is what restorePurchases() must recover from.
         let second = BillingKit(userDefaults: userDefaults)
 
-        await second.restorePurchases()
+        runBounded { await second.restorePurchases() }
 
         XCTAssertTrue(second.isProEnabled)
         XCTAssertEqual(second.restoreState, .restored)
@@ -119,10 +146,10 @@ final class BillingKitTests: XCTestCase {
     /// any test product catalog); the acceptance criterion (Feature 12: "free
     /// features remain usable" / "StoreKit errors do not block free features")
     /// is what's actually under test, not a specific StoreKit error shape.
-    func testFreeFeaturesNotBlockedByLoadFailure() async {
+    func testFreeFeaturesNotBlockedByLoadFailure() throws {
         let billing = BillingKit(userDefaults: userDefaults)
 
-        await billing.loadProducts()
+        runBounded { await billing.loadProducts() }
 
         XCTAssertTrue(billing.productsLoadError != nil || billing.products.isEmpty)
         XCTAssertFalse(billing.isProEnabled)
@@ -130,12 +157,12 @@ final class BillingKitTests: XCTestCase {
 
     // MARK: - Entitlement persistence across instances
 
-    func testEntitlementPersistsAcrossInstances() async throws {
+    func testEntitlementPersistsAcrossInstances() throws {
         session = try makeSession()
 
         let first = BillingKit(userDefaults: userDefaults)
-        await first.loadProducts()
-        await first.purchase()
+        runBounded { await first.loadProducts() }
+        runBounded { await first.purchase() }
         XCTAssertTrue(first.isProEnabled)
 
         // Second instance reads the LOCAL entitlement synchronously on init,

@@ -53,6 +53,7 @@ jobs:
             build 2>&1 | tail -30
 
       - name: Run unit tests
+        timeout-minutes: 10
         run: |
           set -o pipefail
           # `xcodebuild build` above only compiles the app target (per the
