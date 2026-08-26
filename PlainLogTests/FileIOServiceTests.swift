@@ -138,7 +138,7 @@ final class FileIOServiceTests: XCTestCase {
         try service.writeText(text, to: url)
         let state = service.openDailyFile(for: date, in: testFolder)
 
-        if case .loaded(let loadedText) = state {
+        if case .loaded(let loadedText, _) = state {
             XCTAssertEqual(loadedText, text)
         } else {
             XCTFail("Expected .loaded, got \(state)")
@@ -153,7 +153,7 @@ final class FileIOServiceTests: XCTestCase {
         try service.writeText("", to: url)
         let state = service.openDailyFile(for: date, in: testFolder)
 
-        if case .loaded(let loadedText) = state {
+        if case .loaded(let loadedText, _) = state {
             XCTAssertEqual(loadedText, "")
         } else {
             XCTFail("Expected .loaded with empty text, got \(state)")
@@ -173,16 +173,109 @@ final class FileIOServiceTests: XCTestCase {
         let state1 = service.openDailyFile(for: date1, in: testFolder)
         let state2 = service.openDailyFile(for: date2, in: testFolder)
 
-        if case .loaded(let text1) = state1 {
+        if case .loaded(let text1, _) = state1 {
             XCTAssertEqual(text1, "day 1")
         } else {
             XCTFail("Expected .loaded for date1")
         }
 
-        if case .loaded(let text2) = state2 {
+        if case .loaded(let text2, _) = state2 {
             XCTAssertEqual(text2, "day 2")
         } else {
             XCTFail("Expected .loaded for date2")
+        }
+    }
+
+    // MARK: - External Change Detection
+
+    func testTakeSnapshotReturnsNilForNonexistentFile() {
+        let url = testFolder.appendingPathComponent("missing.md")
+        let snapshot = service.takeSnapshot(at: url)
+        XCTAssertNil(snapshot)
+    }
+
+    func testTakeSnapshotCapturesExistingFile() throws {
+        let url = testFolder.appendingPathComponent("2026-08-26.md")
+        try service.writeText("hello", to: url)
+
+        let snapshot = service.takeSnapshot(at: url)
+        XCTAssertNotNil(snapshot)
+        XCTAssertEqual(snapshot?.url, url)
+        XCTAssertNotNil(snapshot?.modificationDate)
+        XCTAssertNotNil(snapshot?.fileSize)
+    }
+
+    func testCheckExternalChangeUnchanged() throws {
+        let url = testFolder.appendingPathComponent("2026-08-26.md")
+        try service.writeText("hello", to: url)
+
+        guard let snapshot = service.takeSnapshot(at: url) else {
+            XCTFail("Snapshot should not be nil")
+            return
+        }
+
+        let result = service.checkExternalChange(at: url, against: snapshot)
+        XCTAssertEqual(result, .unchanged)
+    }
+
+    func testCheckExternalChangeModified() throws {
+        let url = testFolder.appendingPathComponent("2026-08-26.md")
+        try service.writeText("hello", to: url)
+
+        guard let snapshot = service.takeSnapshot(at: url) else {
+            XCTFail("Snapshot should not be nil")
+            return
+        }
+
+        // Modify the file externally
+        try service.writeText("hello world", to: url)
+
+        let result = service.checkExternalChange(at: url, against: snapshot)
+        XCTAssertEqual(result, .modified)
+    }
+
+    func testCheckExternalChangeDeleted() throws {
+        let url = testFolder.appendingPathComponent("2026-08-26.md")
+        try service.writeText("hello", to: url)
+
+        guard let snapshot = service.takeSnapshot(at: url) else {
+            XCTFail("Snapshot should not be nil")
+            return
+        }
+
+        // Delete the file externally
+        try FileManager.default.removeItem(at: url)
+
+        let result = service.checkExternalChange(at: url, against: snapshot)
+        XCTAssertEqual(result, .deleted)
+    }
+
+    func testOpenDailyFileReturnsSnapshotWithLoadedText() throws {
+        let date = Date()
+        let dailyFilename = DailyFilename(date: date)
+        let url = dailyFilename.url(in: testFolder)
+        let text = "# Log\n- [ ] test"
+
+        try service.writeText(text, to: url)
+        let state = service.openDailyFile(for: date, in: testFolder)
+
+        if case .loaded(let loadedText, let snapshot) = state {
+            XCTAssertEqual(loadedText, text)
+            XCTAssertNotNil(snapshot)
+            XCTAssertEqual(snapshot?.url, url)
+        } else {
+            XCTFail("Expected .loaded with snapshot, got \(state)")
+        }
+    }
+
+    func testOpenPendingFileReturnsNilSnapshot() {
+        let date = Date()
+        let state = service.openDailyFile(for: date, in: testFolder)
+
+        if case .pending = state {
+            // Pending files have no snapshot (file doesn't exist)
+        } else {
+            XCTFail("Expected .pending, got \(state)")
         }
     }
 }

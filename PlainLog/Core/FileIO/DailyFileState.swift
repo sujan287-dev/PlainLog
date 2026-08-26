@@ -4,7 +4,8 @@ import Foundation
 /// Matches PLAN.md §9 "File states" (subset relevant to open orchestration).
 enum DailyFileState: Equatable {
     /// File exists and was loaded successfully.
-    case loaded(text: String)
+    /// Includes a snapshot for external change detection (Feature 08).
+    case loaded(text: String, snapshot: FileSnapshot?)
 
     /// File does not exist. Show empty editor as pending new file.
     /// Do NOT create the file yet (Feature 03 pending-new-file policy).

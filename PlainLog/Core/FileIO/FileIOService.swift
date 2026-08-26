@@ -176,7 +176,8 @@ final class FileIOService {
         // File exists and is locally available. Attempt to load.
         do {
             let text = try readText(at: fileURL)
-            return .loaded(text: text)
+            let snapshot = takeSnapshot(at: fileURL)
+            return .loaded(text: text, snapshot: snapshot)
         } catch FileIOError.cloudOnlyFileNotDownloaded {
             // Edge case: the isUbiquitousItem check above missed it, but
             // readText's own gate caught it.
@@ -196,6 +197,69 @@ final class FileIOService {
         } catch {
             return .loadFailed(reason: "Unexpected error: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - External Change Detection (Feature 08)
+
+    /// Captures a snapshot of the file's current state.
+    /// Returns nil if the file does not exist.
+    func takeSnapshot(at url: URL) -> FileSnapshot? {
+        FileSnapshot.capture(at: url, fileManager: fileManager)
+    }
+
+    /// Checks if the file has changed externally since the snapshot was taken.
+    ///
+    /// Important: An evicted iCloud file (cloud-only, not downloaded) reports
+    /// fileExists == false locally, but it is NOT deleted — it still exists in
+    /// iCloud. We must check ubiquitous state before declaring deletion.
+    ///
+    /// - Returns: .unchanged, .modified, or .deleted
+    func checkExternalChange(at url: URL, against snapshot: FileSnapshot) -> ExternalChangeResult {
+        // Check if file still exists locally
+        let existsLocally = fileExists(at: url)
+
+        if !existsLocally {
+            // File does not exist locally. But is it truly deleted, or just
+            // evicted from iCloud? An evicted iCloud file still exists in the
+            // cloud but not locally.
+            if isUbiquitousItem(at: url) {
+                // It's an iCloud item that's not downloaded. This is NOT deletion —
+                // the file still exists in iCloud. Treat as unchanged for now;
+                // the caller should trigger the iCloud download flow.
+                // We return .unchanged because the file hasn't been deleted,
+                // just evicted. The caller will handle the download flow separately.
+                return .unchanged
+            } else {
+                // Not an iCloud item, and file doesn't exist. Truly deleted.
+                return .deleted
+            }
+        }
+
+        // File exists locally. Compare modification date and size.
+        let currentSnapshot = takeSnapshot(at: url)
+
+        guard let current = currentSnapshot else {
+            // Could not read current attributes. Treat as modified to be safe.
+            return .modified
+        }
+
+        // Compare modification dates
+        if let snapshotDate = snapshot.modificationDate,
+           let currentDate = current.modificationDate {
+            if snapshotDate != currentDate {
+                return .modified
+            }
+        } else if snapshot.modificationDate != current.modificationDate {
+            // One is nil, the other is not
+            return .modified
+        }
+
+        // Compare file sizes
+        if snapshot.fileSize != current.fileSize {
+            return .modified
+        }
+
+        return .unchanged
     }
 
     // MARK: - iCloud Safety Gate
