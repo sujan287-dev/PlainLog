@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class FolderAccessService {
+    private static let displayNameKey = "plainlog.folder.displayNameHint"
+
     private let store: BookmarkStore
     private var currentSecurityScopedURL: URL?
 
@@ -13,6 +15,12 @@ final class FolderAccessService {
     var currentFolderURL: URL? {
         if case .folderReady(let url) = state { return url }
         return nil
+    }
+
+    /// The last known display name of the user's folder.
+    /// Stored privately in UserDefaults — never in the user's folder.
+    var folderDisplayNameHint: String? {
+        UserDefaults.standard.string(forKey: Self.displayNameKey)
     }
 
     init(store: BookmarkStore = UserDefaultsBookmarkStore()) {
@@ -38,14 +46,20 @@ final class FolderAccessService {
         resolveBookmark(data: data, isStaleRefresh: false)
     }
 
-    /// Call when the user selects a new folder (from UI, implemented in Piece 4).
-    /// For now, this is a public API to be tested.
+    /// Call when the user selects a new folder (from the onboarding folder picker).
     func registerFolderAccess(url: URL) {
         // Stop access to previous folder if any
         stopAccessingCurrentFolder()
 
+        // Save display name hint (private, never in user folder)
+        saveDisplayNameHint(url.lastPathComponent)
+
+        // We need security-scoped access to create a bookmark from the URL.
+        // The URL from .fileImporter is security-scoped but we must call
+        // startAccessingSecurityScopedResource() before bookmarkData().
+        let didAccess = url.startAccessingSecurityScopedResource()
+
         do {
-            // Create bookmark data.
             // .minimalBookmark keeps the bookmark small (no Finder display
             // metadata) — the only relevant creation option on iOS; the
             // security-scope options in this enum are macOS-only.
@@ -55,8 +69,18 @@ final class FolderAccessService {
                 relativeTo: nil
             )
             store.saveBookmarkData(data)
+
+            // Stop the temporary access used for bookmark creation.
+            // resolveBookmark will re-establish access via the resolved URL.
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+
             resolveBookmark(data: data, isStaleRefresh: false)
         } catch {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
             Log.folderAccess.error("Failed to create bookmark: \(error.localizedDescription)")
             state = .accessLost(reason: "Could not save folder access.")
         }
@@ -65,10 +89,49 @@ final class FolderAccessService {
     func clearAccess() {
         stopAccessingCurrentFolder()
         store.clearBookmarkData()
+        UserDefaults.standard.removeObject(forKey: Self.displayNameKey)
         state = .noFolderSelected
     }
 
+    /// Best-effort detection of whether a folder is in iCloud Drive.
+    /// Returns false if detection fails (fail open — don't block onboarding).
+    static func isICloudFolder(url: URL) -> Bool {
+        // Check resource value first
+        do {
+            let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey])
+            if let isUbiquitous = values.isUbiquitousItem, isUbiquitous {
+                return true
+            }
+        } catch {
+            // Fall through to path heuristic
+        }
+
+        // Path heuristic as fallback
+        let path = url.path.lowercased()
+        return path.contains("mobile documents") || path.contains("clouddocs")
+    }
+
+    /// Check if the folder already contains Markdown files.
+    /// Returns false if the folder cannot be read (fail open).
+    static func hasExistingMarkdownFiles(in url: URL) -> Bool {
+        do {
+            let contents = try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+            return contents.contains { $0.pathExtension.lowercased() == "md" }
+        } catch {
+            Log.folderAccess.error("Could not check for existing files: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     // MARK: - Private Logic
+
+    private func saveDisplayNameHint(_ name: String) {
+        UserDefaults.standard.set(name, forKey: Self.displayNameKey)
+    }
 
     private func resolveBookmark(data: Data, isStaleRefresh: Bool) {
         var isStale = false
