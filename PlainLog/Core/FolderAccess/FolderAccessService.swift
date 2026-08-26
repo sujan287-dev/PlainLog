@@ -37,11 +37,12 @@ final class FolderAccessService {
         stopAccessingCurrentFolder()
 
         do {
-            // Create bookmark data
-            // We use .minimalScope to keep it robust against moves/renames where possible,
-            // but standard behavior is usually fine.
+            // Create bookmark data.
+            // .minimalBookmark keeps the bookmark small (no Finder display
+            // metadata) — the only relevant creation option on iOS; the
+            // security-scope options in this enum are macOS-only.
             let data = try url.bookmarkData(
-                options: .minimalScope,
+                options: .minimalBookmark,
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -91,7 +92,7 @@ final class FolderAccessService {
             Log.folderAccess.info("Bookmark was stale. Refreshing...")
             do {
                 let freshData = try url.bookmarkData(
-                    options: .minimalScope,
+                    options: .minimalBookmark,
                     includingResourceValuesForKeys: nil,
                     relativeTo: nil
                 )
