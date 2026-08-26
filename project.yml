@@ -28,6 +28,10 @@ targets:
       - path: PlainLogTests
     dependencies:
       - target: PlainLog
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PlainLog.app/PlainLog"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   PlainLog:
     build:
