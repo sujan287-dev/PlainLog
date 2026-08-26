@@ -12,7 +12,7 @@ final class Feature08ModalCopyTests: XCTestCase {
         )
         XCTAssertEqual(
             Feature08ModalCopy.conflictMessage,
-            "You have unsaved edits.\n\nReload the file, or save your edits as a copy."
+            "You have unsaved edits.\nReload the file, or save your edits as a copy."
         )
     }
 

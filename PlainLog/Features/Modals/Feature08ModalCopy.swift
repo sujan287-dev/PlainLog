@@ -9,12 +9,8 @@ enum Feature08ModalCopy {
 
     static let conflictTitle = "This file changed outside PlainLog"
 
-    /// PLAN.md presents this as two blank-line-separated lines ("You have
-    /// unsaved edits." / "Reload the file, or save your edits as a copy."),
-    /// the same paragraph-break convention already used for Feature 01's
-    /// iCloud warning copy — rendered here as \n\n, matching that precedent.
     static let conflictMessage =
-        "You have unsaved edits.\n\nReload the file, or save your edits as a copy."
+        "You have unsaved edits.\nReload the file, or save your edits as a copy."
 
     // MARK: - Deleted file modal — with unsaved edits
 
