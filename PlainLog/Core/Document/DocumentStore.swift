@@ -70,6 +70,20 @@ final class DocumentStore {
         !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Large file detection (Feature 04)
+
+    /// Threshold in bytes at or above which a file is considered "large".
+    /// 250 KB per PLAN.md Feature 04. Large files show a non-blocking warning.
+    static let largeFileThresholdBytes = 250 * 1024
+
+    /// True when the loaded file is at or above the large-file threshold.
+    /// Derived from the load-time snapshot. Pending files (no file on disk,
+    /// no snapshot) are never large. This is a load-time heuristic; the
+    /// warning does not live-update as the user types (v1).
+    var isLargeFile: Bool {
+        (loadedSnapshot?.fileSize ?? 0) >= Self.largeFileThresholdBytes
+    }
+
     // MARK: - Load
 
     /// Loads the daily file for `date` in `folder` via FileIOService.

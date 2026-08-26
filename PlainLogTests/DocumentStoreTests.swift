@@ -185,4 +185,35 @@ final class DocumentStoreTests: XCTestCase {
 
         XCTAssertEqual(store.targetFileURL, DailyFilename(date: date).url(in: testFolder))
     }
+
+    // MARK: - Large file detection (Feature 04)
+
+    func testSmallFileIsNotLarge() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("small content", to: url)
+
+        await store.load(date: date, in: testFolder)
+
+        XCTAssertFalse(store.isLargeFile)
+    }
+
+    func testLargeFileIsLarge() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        // ~300 KB, clearly above the 250 KB threshold.
+        let largeContent = String(repeating: "a", count: 300 * 1024)
+        try fileIO.writeText(largeContent, to: url)
+
+        await store.load(date: date, in: testFolder)
+
+        XCTAssertTrue(store.isLargeFile)
+    }
+
+    func testPendingFileIsNotLarge() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        XCTAssertFalse(store.isLargeFile)
+    }
 }

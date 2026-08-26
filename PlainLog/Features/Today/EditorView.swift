@@ -84,16 +84,28 @@ struct EditorView: View {
     }
 
     private var editModeContent: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: textBinding)
-                .disabled(!canEdit)
+        VStack(spacing: 0) {
+            // Feature 04 large file warning (non-blocking).
+            if store.isLargeFile {
+                largeFileWarningBanner
+            }
 
-            if store.currentText.isEmpty && canEdit {
-                Text(EditorCopy.placeholder)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 8)
-                    .padding(.leading, 5)
-                    .allowsHitTesting(false)
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: textBinding)
+                    .disabled(!canEdit)
+
+                if store.currentText.isEmpty && canEdit {
+                    Text(EditorCopy.placeholder)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 8)
+                        .padding(.leading, 5)
+                        .allowsHitTesting(false)
+                }
+
+                // Feature 04 read-only indicator when the file can't be edited safely.
+                if !canEdit {
+                    readOnlyIndicator
+                }
             }
         }
     }
@@ -120,5 +132,35 @@ struct EditorView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Large file warning (Feature 04)
+
+    private var largeFileWarningBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(EditorCopy.largeFileWarning)
+                .font(.caption)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.1))
+    }
+
+    // MARK: - Read-only indicator (Feature 04)
+
+    private var readOnlyIndicator: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Read-only")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
     }
 }

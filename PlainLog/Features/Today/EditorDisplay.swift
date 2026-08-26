@@ -37,4 +37,7 @@ enum EditorCopy {
     /// Curly apostrophe (U+2019) and ellipsis (U+2026) exactly as in PLAN.md,
     /// written as explicit escapes so the characters cannot be silently swapped.
     static let placeholder = "Write today\u{2019}s log\u{2026}"
+
+    /// Feature 04 large file warning (verbatim, test-enforced).
+    static let largeFileWarning = "This file is large.\nEditing may be slower than usual."
 }

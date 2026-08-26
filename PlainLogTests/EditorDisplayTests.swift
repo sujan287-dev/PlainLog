@@ -61,4 +61,13 @@ final class EditorDisplayTests: XCTestCase {
     func testPlaceholderIsVerbatim() {
         XCTAssertEqual(EditorCopy.placeholder, "Write today\u{2019}s log\u{2026}")
     }
+
+    // MARK: - Large file warning (Feature 04)
+
+    func testLargeFileWarningIsVerbatim() {
+        XCTAssertEqual(
+            EditorCopy.largeFileWarning,
+            "This file is large.\nEditing may be slower than usual."
+        )
+    }
 }
