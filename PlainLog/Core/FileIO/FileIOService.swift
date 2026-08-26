@@ -135,6 +135,69 @@ final class FileIOService {
         fileManager.fileExists(atPath: url.path)
     }
 
+    // MARK: - Open Orchestration
+
+    /// Opens a daily file for the given date in the specified folder.
+    /// Returns the file state without creating any files.
+    ///
+    /// Orchestrates the Feature 03 flow:
+    /// 1. Build filename: YYYY-MM-DD.md (local timezone)
+    /// 2. Check iCloud download state (MUST happen before the existence
+    ///    check: an evicted iCloud item reports fileExists == false at its
+    ///    real path, so checking existence first would misreport a
+    ///    cloud-only file as .pending — "doesn't exist yet, safe to create"
+    ///    — instead of .downloading, exactly the blind iCloud duplicate
+    ///    creation PLAN.md §4/Feature 07 forbid. Same class of bug fixed in
+    ///    readText(at:) in Piece 2.1.)
+    /// 3. If cloud-only and not downloaded: return .downloading
+    /// 4. Check if file exists locally
+    ///    - If exists: load via readText(at:)
+    ///    - If not exists: return .pending (no file creation)
+    ///
+    /// This method is synchronous. Callers must invoke it off the main thread.
+    func openDailyFile(for date: Date, in folder: URL) -> DailyFileState {
+        let dailyFilename = DailyFilename(date: date)
+        let fileURL = dailyFilename.url(in: folder)
+
+        // Check iCloud download state first — see doc comment above.
+        if isUbiquitousItem(at: fileURL) {
+            let status = downloadStatus(at: fileURL)
+            if status == .notDownloaded {
+                return .downloading
+            }
+        }
+
+        // File does not exist locally. Per Feature 03 pending-new-file
+        // policy: show empty editor but do NOT create the file yet.
+        guard fileExists(at: fileURL) else {
+            return .pending
+        }
+
+        // File exists and is locally available. Attempt to load.
+        do {
+            let text = try readText(at: fileURL)
+            return .loaded(text: text)
+        } catch FileIOError.cloudOnlyFileNotDownloaded {
+            // Edge case: the isUbiquitousItem check above missed it, but
+            // readText's own gate caught it.
+            return .downloading
+        } catch FileIOError.fileNotFound {
+            // Edge case: file existed at check time but was deleted before read.
+            // Treat as pending (file no longer exists).
+            return .pending
+        } catch FileIOError.encodingFailed {
+            return .loadFailed(reason: "File is not valid UTF-8")
+        } catch FileIOError.coordinationFailed(let message) {
+            return .loadFailed(reason: "Could not access file: \(message)")
+        } catch FileIOError.coordinationDidNotRun {
+            return .loadFailed(reason: "File access coordination failed")
+        } catch FileIOError.underlying(let message) {
+            return .loadFailed(reason: "File system error: \(message)")
+        } catch {
+            return .loadFailed(reason: "Unexpected error: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - iCloud Safety Gate
 
     /// Refuses to touch evicted (cloud-only) iCloud items.

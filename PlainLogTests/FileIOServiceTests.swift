@@ -92,4 +92,97 @@ final class FileIOServiceTests: XCTestCase {
         try service.writeText("hello", to: url)
         XCTAssertTrue(service.fileExists(at: url))
     }
+
+    // MARK: - Daily Filename
+
+    func testDailyFilenameFormat() {
+        let date = Date(timeIntervalSince1970: 1724630400) // 2024-08-26 00:00:00 UTC
+        let calendar = Calendar(identifier: .gregorian)
+        let dailyFilename = DailyFilename(date: date, calendar: calendar)
+
+        // The filename should be YYYY-MM-DD.md in the calendar's timezone.
+        // Since we're using UTC epoch, the date is 2024-08-26 in UTC.
+        // The actual timezone depends on the test runner's locale, but the format is fixed.
+        XCTAssertTrue(dailyFilename.filename.hasSuffix(".md"))
+        XCTAssertEqual(dailyFilename.filename.count, 14) // "2024-08-26.md" is 14 chars
+    }
+
+    func testDailyFilenameURLInFolder() {
+        let date = Date()
+        let dailyFilename = DailyFilename(date: date)
+        let url = dailyFilename.url(in: testFolder)
+
+        XCTAssertTrue(url.path.hasSuffix(".md"))
+        XCTAssertEqual(url.deletingLastPathComponent(), testFolder)
+    }
+
+    // MARK: - Open Orchestration
+
+    func testOpenNonexistentFileReturnsPending() {
+        let date = Date()
+        let state = service.openDailyFile(for: date, in: testFolder)
+
+        XCTAssertEqual(state, .pending)
+
+        // Verify no file was created (pending-new-file policy)
+        let dailyFilename = DailyFilename(date: date)
+        XCTAssertFalse(service.fileExists(at: dailyFilename.url(in: testFolder)))
+    }
+
+    func testOpenExistingFileReturnsLoaded() throws {
+        let date = Date()
+        let dailyFilename = DailyFilename(date: date)
+        let url = dailyFilename.url(in: testFolder)
+        let text = "# Log\n- [ ] test"
+
+        try service.writeText(text, to: url)
+        let state = service.openDailyFile(for: date, in: testFolder)
+
+        if case .loaded(let loadedText) = state {
+            XCTAssertEqual(loadedText, text)
+        } else {
+            XCTFail("Expected .loaded, got \(state)")
+        }
+    }
+
+    func testOpenEmptyExistingFileReturnsLoadedWithEmptyText() throws {
+        let date = Date()
+        let dailyFilename = DailyFilename(date: date)
+        let url = dailyFilename.url(in: testFolder)
+
+        try service.writeText("", to: url)
+        let state = service.openDailyFile(for: date, in: testFolder)
+
+        if case .loaded(let loadedText) = state {
+            XCTAssertEqual(loadedText, "")
+        } else {
+            XCTFail("Expected .loaded with empty text, got \(state)")
+        }
+    }
+
+    func testOpenFileWithDifferentDatesLoadsCorrectFiles() throws {
+        let date1 = Date(timeIntervalSince1970: 1724630400) // 2024-08-26
+        let date2 = Date(timeIntervalSince1970: 1724716800) // 2024-08-27
+
+        let dailyFilename1 = DailyFilename(date: date1)
+        let dailyFilename2 = DailyFilename(date: date2)
+
+        try service.writeText("day 1", to: dailyFilename1.url(in: testFolder))
+        try service.writeText("day 2", to: dailyFilename2.url(in: testFolder))
+
+        let state1 = service.openDailyFile(for: date1, in: testFolder)
+        let state2 = service.openDailyFile(for: date2, in: testFolder)
+
+        if case .loaded(let text1) = state1 {
+            XCTAssertEqual(text1, "day 1")
+        } else {
+            XCTFail("Expected .loaded for date1")
+        }
+
+        if case .loaded(let text2) = state2 {
+            XCTAssertEqual(text2, "day 2")
+        } else {
+            XCTFail("Expected .loaded for date2")
+        }
+    }
 }
