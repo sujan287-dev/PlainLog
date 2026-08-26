@@ -19,8 +19,16 @@ final class FolderAccessService {
         self.store = store
     }
 
-    /// Call on app launch to restore access.
+    /// Call once on app launch to restore access.
+    ///
+    /// Guarded to a single call from `.noFolderSelected`: SwiftUI's `onAppear`
+    /// can fire more than once for a view in some lifecycle/navigation cases,
+    /// and re-resolving here would call `startAccessingSecurityScopedResource()`
+    /// again without a balancing `stop` for the previous resolve, leaking
+    /// security-scoped access.
     func start() {
+        guard case .noFolderSelected = state else { return }
+
         guard let data = store.loadBookmarkData() else {
             state = .noFolderSelected
             return

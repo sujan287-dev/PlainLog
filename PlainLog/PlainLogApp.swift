@@ -2,13 +2,17 @@ import SwiftUI
 
 @main
 struct PlainLogApp: App {
+    // iOS 17+ @Observable pattern
+    @State private var folderAccessService = FolderAccessService()
+
     var body: some Scene {
         WindowGroup {
-            // Sprint 1 · Piece 1: scaffold placeholder.
-            // RootView with state-based routing arrives in Piece 3.
-            Text("PlainLog")
-                .font(.largeTitle)
-                .accessibilityLabel("PlainLog")
+            RootView()
+                .environment(folderAccessService)
+                .onAppear {
+                    // Trigger bookmark resolution on launch
+                    folderAccessService.start()
+                }
         }
     }
 }
