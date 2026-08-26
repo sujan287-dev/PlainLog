@@ -104,7 +104,7 @@ final class FileIOServiceTests: XCTestCase {
         // Since we're using UTC epoch, the date is 2024-08-26 in UTC.
         // The actual timezone depends on the test runner's locale, but the format is fixed.
         XCTAssertTrue(dailyFilename.filename.hasSuffix(".md"))
-        XCTAssertEqual(dailyFilename.filename.count, 14) // "2024-08-26.md" is 14 chars
+        XCTAssertEqual(dailyFilename.filename.count, 13) // "2024-08-26.md" is 13 chars
     }
 
     func testDailyFilenameURLInFolder() {

@@ -78,11 +78,16 @@ jobs:
 
           echo "Using simulator UDID: $DEVICE_UDID"
 
+          # No tail/truncation here (unlike the build step above): this
+          # project's test suite is small, and a truncated log has already
+          # once hidden the actual XCTAssert failure detail on a red run,
+          # forcing the failure to be diagnosed by inspection instead of
+          # by reading the log. Full output is worth the extra log length.
           xcodebuild \
             -project PlainLog.xcodeproj \
             -scheme PlainLog \
             -destination "platform=iOS Simulator,id=$DEVICE_UDID" \
-            test 2>&1 | tail -60
+            test 2>&1
 
       - name: Verify targets
         run: xcodebuild -project PlainLog.xcodeproj -list
