@@ -41,3 +41,37 @@ enum EditorCopy {
     /// Feature 04 large file warning (verbatim, test-enforced).
     static let largeFileWarning = "This file is large.\nEditing may be slower than usual."
 }
+
+/// Feature 10 summary bar's expense-total formatting.
+enum ExpenseTotalDisplay {
+
+    /// Locale is explicitly en_US_POSIX, NEVER the device locale: PLAN.md's
+    /// summary bar example and this app's tests use "." as the decimal
+    /// separator (e.g. "118.75"). The device locale could format the same
+    /// value as "118,75", breaking display parity with the spec and making
+    /// output non-deterministic across regions. Grouping is disabled so no
+    /// comma can appear anywhere in the output, in either role (decimal or
+    /// thousands separator).
+    private static let formatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+
+    /// Formats a Decimal expense total per the Feature 10 summary bar example
+    /// ("Expenses: 118.75"). Money stays Decimal end-to-end — bridged through
+    /// NSDecimalNumber only for this formatter call, never through Double.
+    static func text(for total: Decimal) -> String {
+        let number = NSDecimalNumber(decimal: total)
+        if let formatted = formatter.string(from: number) {
+            return formatted
+        }
+        // Not expected for finite Decimal values, but never crash: fall back
+        // to a plain string interpolation of the Decimal.
+        return "\(total)"
+    }
+}

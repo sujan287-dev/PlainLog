@@ -216,4 +216,76 @@ final class DocumentStoreTests: XCTestCase {
 
         XCTAssertFalse(store.isLargeFile)
     }
+
+    // MARK: - Summary parsing (Feature 10)
+
+    func testSummaryIsPopulatedOnLoad() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText(
+            "- [x] Buy milk\n[tag:home]\n[expense: 12.50 snack]",
+            to: url
+        )
+
+        await store.load(date: date, in: testFolder)
+
+        let summary = try XCTUnwrap(store.summary)
+        XCTAssertEqual(summary.taskTotalCount, 1)
+        XCTAssertEqual(summary.taskCompletedCount, 1)
+        XCTAssertEqual(summary.tags, ["home"])
+        XCTAssertEqual(summary.expenseTotal, try XCTUnwrap(Decimal(string: "12.50")))
+    }
+
+    func testSummaryDebounceFiresAfterIdle() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("- [ ] one task", to: url)
+
+        await store.load(date: date, in: testFolder)
+        XCTAssertEqual(store.summary?.taskTotalCount, 1)
+
+        store.updateText("- [ ] one task\n- [x] two task")
+
+        // Synchronous with updateText, no await in between: the 300ms parse
+        // debounce has not fired yet, so the summary must still be stale.
+        XCTAssertEqual(store.summary?.taskTotalCount, 1)
+
+        try await Task.sleep(for: .milliseconds(450))
+
+        XCTAssertEqual(store.summary?.taskTotalCount, 2)
+        XCTAssertEqual(store.summary?.taskCompletedCount, 1)
+    }
+
+    func testSummaryDebounceResetsOnRapidTyping() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+        XCTAssertEqual(store.summary?.taskTotalCount, 0)
+
+        // Type rapidly, each keystroke within 200ms of the previous.
+        for i in 0..<5 {
+            store.updateText("- [ ] task \(i)")
+            try await Task.sleep(for: .milliseconds(200))
+        }
+
+        // After 5 rapid edits (1000ms total), the summary should still be the
+        // pre-typing baseline because the 300ms debounce kept resetting.
+        XCTAssertEqual(store.summary?.taskTotalCount, 0)
+
+        // Now wait for the final debounce to fire.
+        try await Task.sleep(for: .milliseconds(450))
+
+        XCTAssertEqual(store.summary?.taskTotalCount, 1)
+    }
+
+    func testSummaryForPendingFileIsZeroed() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+
+        await store.load(date: date, in: testFolder)
+
+        let summary = try XCTUnwrap(store.summary)
+        XCTAssertEqual(summary.taskCompletedCount, 0)
+        XCTAssertEqual(summary.taskTotalCount, 0)
+        XCTAssertEqual(summary.tags, [])
+        XCTAssertEqual(summary.expenseTotal, Decimal.zero)
+    }
 }

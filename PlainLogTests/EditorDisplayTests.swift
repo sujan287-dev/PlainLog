@@ -70,4 +70,29 @@ final class EditorDisplayTests: XCTestCase {
             "This file is large.\nEditing may be slower than usual."
         )
     }
+
+    // MARK: - Expense total formatting (Feature 10)
+
+    func testExpenseTotalFormatterExactOutputs() throws {
+        XCTAssertEqual(
+            ExpenseTotalDisplay.text(for: try XCTUnwrap(Decimal(string: "118.75"))),
+            "118.75"
+        )
+        XCTAssertEqual(
+            ExpenseTotalDisplay.text(for: try XCTUnwrap(Decimal(string: "4"))),
+            "4"
+        )
+        XCTAssertEqual(
+            ExpenseTotalDisplay.text(for: try XCTUnwrap(Decimal(string: "99"))),
+            "99"
+        )
+        XCTAssertEqual(
+            ExpenseTotalDisplay.text(for: Decimal.zero),
+            "0"
+        )
+        XCTAssertEqual(
+            ExpenseTotalDisplay.text(for: try XCTUnwrap(Decimal(string: "12.5"))),
+            "12.5"
+        )
+    }
 }

@@ -49,8 +49,18 @@ final class DocumentStore {
     /// Debounced autosave task. Cancelled and restarted on every updateText call.
     private var autosaveTask: Task<Void, Never>?
 
+    /// Debounced parse task (Feature 10). Cancelled and restarted on every
+    /// updateText call. Independent of autosaveTask — the two debounces never
+    /// share a task variable, so editing never delays saving or vice versa.
+    private var parseTask: Task<Void, Never>?
+
     /// The text at the last successful save (used for dirty tracking).
     private var lastSavedText: String = ""
+
+    /// Live task/tag/expense summary for the Feature 10 summary bar.
+    /// nil until the first parse runs (immediately on load, before any typing).
+    /// While nil, the summary bar is simply not rendered.
+    private(set) var summary: ParsedSummary?
 
     init(fileIO: FileIOService = FileIOService()) {
         self.fileIO = fileIO
@@ -89,6 +99,10 @@ final class DocumentStore {
     /// Loads the daily file for `date` in `folder` via FileIOService.
     /// File I/O runs off the main actor; state is applied on the main actor.
     func load(date: Date, in folder: URL) async {
+        // Cancel any pending parse debounce from the previous document before
+        // this one's state overwrites currentText/summary underneath it.
+        parseTask?.cancel()
+
         selectedDate = date
         folderURL = folder
         fileState = nil
@@ -130,6 +144,11 @@ final class DocumentStore {
             isDirty = false
             saveState = .idle
         }
+
+        // Feature 10: parse immediately on load (no debounce) so the summary
+        // bar is accurate the moment a document opens. currentText is defined
+        // in every branch above, so this runs unconditionally.
+        reparse()
     }
 
     // MARK: - Editing
@@ -148,6 +167,33 @@ final class DocumentStore {
             guard !Task.isCancelled else { return }
             await self?.autosave()
         }
+
+        // Restart the parse debounce (Feature 10). Independent of the
+        // autosave debounce above — never shares a task variable with it, so
+        // editing never delays saving or vice versa.
+        parseTask?.cancel()
+        parseTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(Self.parseDebounceMilliseconds))
+            guard !Task.isCancelled else { return }
+            self?.reparse()
+        }
+    }
+
+    // MARK: - Summary parsing (Feature 10)
+
+    /// Debounce interval for re-parsing the summary while typing.
+    /// 300ms per PLAN.md Feature 10 ("Parsing is debounced by 300ms").
+    private static let parseDebounceMilliseconds = 300
+
+    /// Synchronously re-parses the CURRENT text into `summary`.
+    /// Reads `currentText` at call time (not a captured snapshot), so a
+    /// debounced call always reflects the latest typing, even if more edits
+    /// landed after the timer was scheduled (in which case that timer was
+    /// cancelled and replaced before it could fire).
+    /// Parsing is small, in-memory, O(n) string work — per the locked design
+    /// it stays on the main actor and never hops to Task.detached.
+    private func reparse() {
+        summary = ParserKit.parseSummary(currentText)
     }
 
     // MARK: - Autosave & Save

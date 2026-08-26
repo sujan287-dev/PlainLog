@@ -119,16 +119,22 @@ struct EditorView: View {
     // MARK: - Bottom bar
 
     private var bottomBar: some View {
-        HStack {
-            if let status = SaveStatusDisplay.text(
-                saveState: store.saveState,
-                fileState: store.fileState
-            ) {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            if let summary = store.summary {
+                SummaryBar(summary: summary)
             }
-            Spacer()
+
+            HStack {
+                if let status = SaveStatusDisplay.text(
+                    saveState: store.saveState,
+                    fileState: store.fileState
+                ) {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
