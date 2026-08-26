@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -61,9 +62,17 @@ jobs:
           # Runner simulator availability shifts between Xcode/OS images, so
           # pick an available iPhone simulator at run time rather than
           # hardcoding a device name that may not exist on this runner.
+          # Filtered to iOS 17+ runtimes (this project's deploymentTarget) —
+          # a runner with older runtimes installed alongside newer ones must
+          # never hand back a device that can't run this project's tests.
+          # Runtime identifiers are hyphenated, e.g.
+          # "com.apple.CoreSimulator.SimRuntime.iOS-17-0" — filtered on the
+          # entries' key BEFORE flattening, so each device stays tied to its
+          # own runtime.
           DEVICE_UDID=$(xcrun simctl list devices available -j | jq -r '
             .devices
             | to_entries
+            | map(select(.key | test("iOS-(1[7-9]|[2-9][0-9])-")))
             | map(.value)
             | flatten
             | map(select(.name | test("iPhone")))

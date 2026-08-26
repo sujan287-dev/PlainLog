@@ -117,6 +117,24 @@ final class FolderAccessServiceTests: XCTestCase {
         service.clearAccess()
         XCTAssertFalse(service.statusDescription.isEmpty)
     }
+
+    // MARK: - bookmarkNeedsRefresh / .folderUnwritable (C5)
+
+    func testBookmarkNeedsRefreshDefaultsFalse() {
+        // The real stale-bookmark-refresh-failure path requires an actually
+        // stale security-scoped bookmark, which isn't reliably reproducible
+        // in this sandboxed test environment (same class of limitation as
+        // the real-device-only iCloud paths already in QA debt). This pins
+        // the safe default a fresh service starts with.
+        XCTAssertFalse(service.bookmarkNeedsRefresh)
+    }
+
+    func testReportUnwritableFolderUpdatesState() {
+        service.reportUnwritableFolder(reason: "Read-only volume")
+
+        XCTAssertEqual(service.state, .folderUnwritable(reason: "Read-only volume"))
+        XCTAssertEqual(service.statusDescription, "Folder unwritable")
+    }
 }
 
 // Mock Store for Testing

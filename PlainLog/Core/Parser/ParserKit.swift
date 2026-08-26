@@ -230,7 +230,16 @@ enum ParserKit {
             uniqueTags.append(tag.name)
         }
 
-        let expenseTotal = expenses.reduce(Decimal.zero) { $0 + $1.amount }
+        // Guard against Decimal overflow on pathological input (e.g.
+        // thousands of near-maximum-magnitude expense entries in one file).
+        // Decimal arithmetic doesn't trap on overflow, it produces a NaN
+        // result — if the running total ever goes non-finite, stop
+        // accumulating further rather than let NaN propagate into the
+        // summary and, eventually, the formatter.
+        let expenseTotal = expenses.reduce(Decimal.zero) { partial, expense in
+            let sum = partial + expense.amount
+            return sum.isNaN ? partial : sum
+        }
 
         return ParsedSummary(
             taskCompletedCount: completedCount,

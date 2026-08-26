@@ -16,6 +16,9 @@ struct FolderHealthView: View {
                 Section("Folder") {
                     LabeledContent("Current folder", value: folderName)
                     LabeledContent("Status", value: folderAccessService.statusDescription)
+                    if folderAccessService.bookmarkNeedsRefresh {
+                        LabeledContent("Needs reconnection", value: "Yes")
+                    }
                     LabeledContent("Last successful save", value: lastSaveText)
                 }
 

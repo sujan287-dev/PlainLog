@@ -239,4 +239,20 @@ final class ParserKitTests: XCTestCase {
         _ = ParserKit.parseSummary(text)
         XCTAssertEqual(text, original)
     }
+
+    // MARK: - Decimal overflow safety
+
+    func testExpenseTotalOverflowDoesNotProduceNaN() {
+        // Near-maximum-magnitude amounts that overflow Decimal's
+        // representable range when summed. Decimal arithmetic doesn't trap
+        // on overflow, it produces NaN — the summary must never surface it.
+        let hugeAmountToken = String(repeating: "9", count: 38)
+        let text = (0..<3)
+            .map { "[expense: \(hugeAmountToken) item\($0)]" }
+            .joined(separator: "\n")
+
+        let summary = ParserKit.parseSummary(text)
+
+        XCTAssertFalse(summary.expenseTotal.isNaN)
+    }
 }

@@ -141,4 +141,14 @@ final class MarkdownParserTests: XCTestCase {
         let spans = InlineParser.parse("hello ** world")
         XCTAssertEqual(spans, [.text("hello ** world")])
     }
+
+    func testInlineAsteriskAsteriskEdgeCasePinnedBehavior() {
+        // Pins current, deterministic (if unintuitive) behavior for "*a**":
+        // the '*' right after "a" isn't accepted as the italic close because
+        // it's immediately followed by another '*' (which scanItalic treats
+        // as "this might be a bold close, not mine"), so it's absorbed into
+        // the italic content instead, and the final '*' closes it.
+        let spans = InlineParser.parse("*a**")
+        XCTAssertEqual(spans, [.italic("a*")])
+    }
 }

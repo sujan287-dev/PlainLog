@@ -11,6 +11,14 @@ final class FolderAccessService {
 
     var state: FolderAccessState = .noFolderSelected
 
+    /// True when the current session's bookmark was found stale and the
+    /// automatic refresh failed. Access is still live for this session (via
+    /// currentSecurityScopedURL) — this does not interrupt the user, it's
+    /// surfaced non-blockingly on the Folder Health screen so they can
+    /// reconnect before the next cold launch, when a still-stale bookmark
+    /// would fail to resolve at all.
+    private(set) var bookmarkNeedsRefresh: Bool = false
+
     // Read-only access to the current folder URL for other services
     var currentFolderURL: URL? {
         if case .folderReady(let url) = state { return url }
@@ -106,6 +114,17 @@ final class FolderAccessService {
         state = .noFolderSelected
     }
 
+    /// Reports that the current folder can no longer be written to (e.g. a
+    /// save failed with a permission-type error). Routes to the recovery
+    /// flow — RootView already handles .folderUnwritable — so the user can
+    /// pick a working folder. Keeps the existing bookmark on disk: it may
+    /// still resolve fine, and RecoveryView's flow overwrites it with a
+    /// fresh one as soon as the user picks a new folder anyway.
+    func reportUnwritableFolder(reason: String) {
+        stopAccessingCurrentFolder()
+        state = .folderUnwritable(reason: reason)
+    }
+
     /// Best-effort detection of whether a folder is in iCloud Drive.
     /// Returns false if detection fails (fail open — don't block onboarding).
     static func isICloudFolder(url: URL) -> Bool {
@@ -171,6 +190,7 @@ final class FolderAccessService {
         }
 
         currentSecurityScopedURL = url
+        bookmarkNeedsRefresh = false
 
         if isStale {
             Log.folderAccess.info("Bookmark was stale. Refreshing...")
@@ -185,8 +205,9 @@ final class FolderAccessService {
                 // Access is already live for this session — only the persisted
                 // bookmark failed to refresh. Do not treat this as access loss;
                 // the next resolve attempt will simply see a stale bookmark again
-                // and retry the refresh.
+                // and retry the refresh. Surface it non-blockingly instead.
                 Log.folderAccess.error("Failed to refresh stale bookmark: \(error.localizedDescription)")
+                bookmarkNeedsRefresh = true
             }
         }
 

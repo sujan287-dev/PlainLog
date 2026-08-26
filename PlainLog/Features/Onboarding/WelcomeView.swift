@@ -23,7 +23,13 @@ struct WelcomeView: View {
                     onChooseDifferent: {
                         showingConfirmation = false
                         selectedFolderURL = nil
-                        showingFileImporter = true
+                        // Defer by one runloop tick: presenting the file
+                        // importer in the same synchronous update as
+                        // dismissing FolderConfirmationView can race with
+                        // that dismissal and silently fail to present.
+                        Task { @MainActor in
+                            showingFileImporter = true
+                        }
                     }
                 )
             } else {
