@@ -278,4 +278,75 @@ final class FileIOServiceTests: XCTestCase {
             XCTFail("Expected .pending, got \(state)")
         }
     }
+
+    // MARK: - iCloud State Mapping (pure, fully CI-testable)
+
+    func testMappingNonUbiquitousIsNotICloud() {
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: false, downloadStatus: nil),
+            .notICloud
+        )
+        // Even if a bogus status is present, non-ubiquitous wins.
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: false, downloadStatus: .notDownloaded),
+            .notICloud
+        )
+    }
+
+    func testMappingUbiquitousStates() {
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: true, downloadStatus: .current),
+            .localReady
+        )
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: true, downloadStatus: .downloaded),
+            .localReady
+        )
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: true, downloadStatus: .notDownloaded),
+            .cloudOnly
+        )
+    }
+
+    func testMappingUbiquitousWithUnreadableStatusIsCloudOnly() {
+        // Safety rule: never assume an iCloud item is local unless the system
+        // explicitly says so.
+        XCTAssertEqual(
+            ICloudFileState.mapping(isUbiquitous: true, downloadStatus: nil),
+            .cloudOnly
+        )
+    }
+
+    // MARK: - iCloud State via Service (local-file paths, CI-safe)
+
+    func testICloudStateForLocalFileIsNotICloud() throws {
+        let url = testFolder.appendingPathComponent("2026-08-26.md")
+        try service.writeText("hello", to: url)
+        XCTAssertEqual(service.iCloudState(at: url), .notICloud)
+    }
+
+    func testICloudStateForNonexistentLocalFileIsNotICloud() {
+        let url = testFolder.appendingPathComponent("missing.md")
+        // Fail-open: local folders must never be blocked by state reads.
+        XCTAssertEqual(service.iCloudState(at: url), .notICloud)
+    }
+
+    func testRequestCloudDownloadOnNonUbiquitousFileThrows() {
+        let url = testFolder.appendingPathComponent("missing.md")
+        XCTAssertThrowsError(try service.requestCloudDownload(at: url)) { error in
+            guard case FileIOError.downloadRequestFailed = error else {
+                XCTFail("Expected downloadRequestFailed, got \(error)")
+                return
+            }
+        }
+    }
+
+    // MARK: - openDailyFile regression guard
+
+    func testOpenDailyFileStillReturnsPendingForMissingLocalFile() {
+        // Guards the Piece 2.4 refactor: local missing files must still be
+        // .pending, not .downloading.
+        let state = service.openDailyFile(for: Date(), in: testFolder)
+        XCTAssertEqual(state, .pending)
+    }
 }

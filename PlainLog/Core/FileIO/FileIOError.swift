@@ -24,4 +24,7 @@ enum FileIOError: Error, Equatable {
 
     /// Underlying filesystem failure.
     case underlying(String)
+
+    /// A request to download an iCloud item could not be started.
+    case downloadRequestFailed(String)
 }

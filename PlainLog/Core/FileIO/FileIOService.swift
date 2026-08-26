@@ -142,14 +142,14 @@ final class FileIOService {
     ///
     /// Orchestrates the Feature 03 flow:
     /// 1. Build filename: YYYY-MM-DD.md (local timezone)
-    /// 2. Check iCloud download state (MUST happen before the existence
-    ///    check: an evicted iCloud item reports fileExists == false at its
-    ///    real path, so checking existence first would misreport a
+    /// 2. Check iCloud state via iCloudState(at:) (MUST happen before the
+    ///    existence check: an evicted iCloud item reports fileExists == false
+    ///    at its real path, so checking existence first would misreport a
     ///    cloud-only file as .pending — "doesn't exist yet, safe to create"
     ///    — instead of .downloading, exactly the blind iCloud duplicate
     ///    creation PLAN.md §4/Feature 07 forbid. Same class of bug fixed in
     ///    readText(at:) in Piece 2.1.)
-    /// 3. If cloud-only and not downloaded: return .downloading
+    /// 3. If cloud-only or actively downloading: return .downloading
     /// 4. Check if file exists locally
     ///    - If exists: load via readText(at:)
     ///    - If not exists: return .pending (no file creation)
@@ -159,12 +159,13 @@ final class FileIOService {
         let dailyFilename = DailyFilename(date: date)
         let fileURL = dailyFilename.url(in: folder)
 
-        // Check iCloud download state first — see doc comment above.
-        if isUbiquitousItem(at: fileURL) {
-            let status = downloadStatus(at: fileURL)
-            if status == .notDownloaded {
-                return .downloading
-            }
+        // iCloud gate FIRST. Evicted files report fileExists == false, so this
+        // must run before any existence-based branching (Pieces 2.1/2.2 fix).
+        switch iCloudState(at: fileURL) {
+        case .cloudOnly, .downloading:
+            return .downloading
+        case .notICloud, .localReady, .downloadFailed:
+            break
         }
 
         // File does not exist locally. Per Feature 03 pending-new-file
@@ -179,7 +180,7 @@ final class FileIOService {
             let snapshot = takeSnapshot(at: fileURL)
             return .loaded(text: text, snapshot: snapshot)
         } catch FileIOError.cloudOnlyFileNotDownloaded {
-            // Edge case: the isUbiquitousItem check above missed it, but
+            // Edge case: the iCloudState check above missed it, but
             // readText's own gate caught it.
             return .downloading
         } catch FileIOError.fileNotFound {
@@ -260,6 +261,29 @@ final class FileIOService {
         }
 
         return .unchanged
+    }
+
+    // MARK: - iCloud State & Download (Feature 07)
+
+    /// Reads the current iCloud state of the item at this URL.
+    /// Fail-open for ordinary local files: any resource-value read failure on a
+    /// non-ubiquitous item yields .notICloud so local folders are never blocked.
+    func iCloudState(at url: URL) -> ICloudFileState {
+        let isUbiquitous = isUbiquitousItem(at: url)
+        let status = downloadStatus(at: url)
+        return ICloudFileState.mapping(isUbiquitous: isUbiquitous, downloadStatus: status)
+    }
+
+    /// Requests that iCloud download the item to local storage.
+    /// - Throws: FileIOError.downloadRequestFailed if the item is not a
+    ///   ubiquitous item or the system refuses the request. Callers must only
+    ///   invoke this for items whose iCloudState is .cloudOnly.
+    func requestCloudDownload(at url: URL) throws {
+        do {
+            try fileManager.startDownloadingUbiquitousItem(at: url)
+        } catch {
+            throw FileIOError.downloadRequestFailed(error.localizedDescription)
+        }
     }
 
     // MARK: - iCloud Safety Gate
