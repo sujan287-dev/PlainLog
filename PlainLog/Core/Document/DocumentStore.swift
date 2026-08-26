@@ -208,8 +208,13 @@ final class DocumentStore {
 
         switch result {
         case .success:
-            lastSavedText = currentText
-            isDirty = false
+            // Use `text` (what was actually written), not the live `currentText`
+            // property — the user may have kept typing during the write above,
+            // so `currentText` can already be newer than what's on disk. Using
+            // it here would wrongly mark the newer edit as saved and cause the
+            // next debounce cycle to skip saving it, silently losing it.
+            lastSavedText = text
+            isDirty = (currentText != lastSavedText)
             isPendingNewFile = false
             saveState = .saved
             // Capture a fresh snapshot for external-change detection.
