@@ -25,7 +25,6 @@ final class BillingKit {
     static let entitlementKey = "plainlog.pro.entitlement"
 
     private let userDefaults: UserDefaults
-    private var transactionListenerTask: Task<Void, Never>?
 
     // MARK: - State
 
@@ -42,15 +41,18 @@ final class BillingKit {
         // a network round trip.
         self.isProEnabled = userDefaults.bool(forKey: Self.entitlementKey)
 
-        transactionListenerTask = Task { [weak self] in
+        // Fire-and-forget: a started Task keeps running without needing its
+        // handle retained (matches the drain-task pattern in
+        // DocumentStore.performSave()). No stored handle means no deinit
+        // cleanup is needed at all — sidesteps the actor-isolation
+        // constraint FolderAccessService's empty deinit documents (deinit is
+        // always non-isolated, even on a @MainActor class, so it can't read
+        // a MainActor-isolated stored property to cancel it). In practice
+        // BillingKit is a long-lived, app-lifetime service; the OS reclaims
+        // everything on termination.
+        Task { [weak self] in
             await self?.listenForTransactions()
         }
-    }
-
-    deinit {
-        // Task.cancel() is a plain, thread-safe API — safe to call from a
-        // non-isolated deinit without hopping to the main actor.
-        transactionListenerTask?.cancel()
     }
 
     // MARK: - Product loading
