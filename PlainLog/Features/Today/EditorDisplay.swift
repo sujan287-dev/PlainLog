@@ -23,7 +23,8 @@ enum SaveStatusDisplay {
             return "Saving\u{2026}"
         case .saved:
             return "Saved"
-        case .saveFailed, .conflictDetectedDuringSave, .targetFileAlreadyExists:
+        case .saveFailed, .conflictDetectedDuringSave, .targetFileAlreadyExists,
+             .conflictDetected, .fileDeletedExternally:
             return "Save failed"
         case .accessLostDuringSave:
             return "Folder access lost"

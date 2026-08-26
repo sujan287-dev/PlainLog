@@ -316,6 +316,21 @@ final class DocumentStore {
         }
     }
 
+    /// Saves the current text as a conflict copy (Feature 08).
+    /// Returns the new file URL. Only `folderURL` is needed — FileIOService's
+    /// saveAsCopy computes its own non-colliding copy name from `saveMoment`
+    /// and the folder's existing contents; it doesn't take a target URL.
+    func saveAsCopy() async throws -> URL {
+        guard let folderURL else {
+            throw FileIOError.underlying("No folder connected")
+        }
+        let io = fileIO
+        let text = currentText
+        return try await Task.detached(priority: .userInitiated) {
+            try io.saveAsCopy(text: text, forSaveAt: Date(), in: folderURL)
+        }.value
+    }
+
     // MARK: - Date navigation (Feature 09)
 
     /// Gregorian calendar bound to the device's local timezone, mirroring

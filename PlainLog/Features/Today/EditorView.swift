@@ -7,9 +7,16 @@ import SwiftUI
 struct EditorView: View {
     let store: DocumentStore
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var showingFolderHealth = false
     @State private var showingHistory = false
     @State private var editorMode: EditorMode = .editing
+
+    // Feature 08: foreground external-change check.
+    @State private var showingConflictModal = false
+    @State private var showingDeletedFileModal = false
+    @State private var deletedFileVariant: DeletedFileModal.Variant = .withoutUnsavedEdits
 
     enum EditorMode: Hashable {
         case editing
@@ -38,6 +45,93 @@ struct EditorView: View {
             contentArea
             bottomBar
         }
+        // Feature 08: invisible carriers for the .alert-based modals below,
+        // driven by the @State flags the foreground check sets.
+        .background(
+            ConflictModal(
+                isPresented: $showingConflictModal,
+                reload: { Task { await reloadCurrentDocument() } },
+                saveAsCopy: { Task { await saveCurrentDocumentAsCopyThenReload() } }
+            )
+        )
+        .background(
+            DeletedFileModal(
+                isPresented: $showingDeletedFileModal,
+                variant: deletedFileVariant,
+                recreate: { Task { await recreateDeletedFileThenReload() } },
+                discard: { Task { await reloadCurrentDocument() } },
+                ok: { Task { await reloadCurrentDocument() } }
+            )
+        )
+        // Feature 08: check for external changes whenever the app returns
+        // to the foreground.
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .active {
+                Task { await checkForExternalChanges() }
+            }
+        }
+    }
+
+    // MARK: - Foreground external-change check (Feature 08)
+
+    /// Runs on every return to the foreground. Only meaningful once a file is
+    /// actually loaded with a snapshot to compare against — pending, failed,
+    /// and downloading states have nothing on disk to have changed.
+    private func checkForExternalChanges() async {
+        guard case .loaded = store.fileState,
+              let snapshot = store.loadedSnapshot,
+              let url = store.targetFileURL else {
+            return
+        }
+
+        let fileIO = FileIOService()
+        let result = await Task.detached(priority: .userInitiated) {
+            fileIO.checkExternalChange(at: url, against: snapshot)
+        }.value
+
+        switch result {
+        case .unchanged:
+            break
+
+        case .modified:
+            if store.isDirty {
+                showingConflictModal = true
+            } else {
+                // Feature 08: no unsaved edits — reload silently, no modal.
+                await reloadCurrentDocument()
+            }
+
+        case .deleted:
+            deletedFileVariant = store.isDirty ? .withUnsavedEdits : .withoutUnsavedEdits
+            showingDeletedFileModal = true
+        }
+    }
+
+    /// Reload action shared by: silent reload on unmodified-but-changed
+    /// content, the conflict modal's "Reload", the deleted-file modal's
+    /// "Discard edits", and its "OK" (which resolves to .pending since the
+    /// file no longer exists) — no merge logic anywhere (Feature 08).
+    private func reloadCurrentDocument() async {
+        guard let folderURL = store.folderURL else { return }
+        await store.load(date: store.selectedDate, in: folderURL)
+    }
+
+    /// Conflict modal's "Save as copy": preserve the local edits under a new
+    /// filename, then reload the original (unedited-locally) file.
+    private func saveCurrentDocumentAsCopyThenReload() async {
+        do {
+            _ = try await store.saveAsCopy()
+        } catch {
+            Log.document.error("Save as copy failed: \(error.localizedDescription)")
+        }
+        await reloadCurrentDocument()
+    }
+
+    /// Deleted-file modal's "Recreate file": write the current text back to
+    /// disk, then reload to refresh fileState/loadedSnapshot consistently.
+    private func recreateDeletedFileThenReload() async {
+        await store.saveNow()
+        await reloadCurrentDocument()
     }
 
     // MARK: - Top bar

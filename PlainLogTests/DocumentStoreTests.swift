@@ -457,4 +457,42 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertFalse(fileIO.fileExists(at: url))
         XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: target))
     }
+
+    // MARK: - saveAsCopy (Feature 08)
+
+    func testSaveAsCopyCreatesFile() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("original content", to: url)
+
+        await store.load(date: date, in: testFolder)
+
+        let contentsBefore = try FileManager.default.contentsOfDirectory(
+            at: testFolder,
+            includingPropertiesForKeys: nil,
+            options: []
+        )
+        XCTAssertEqual(contentsBefore.count, 1)
+
+        let copyURL = try await store.saveAsCopy()
+
+        let contentsAfter = try FileManager.default.contentsOfDirectory(
+            at: testFolder,
+            includingPropertiesForKeys: nil,
+            options: []
+        )
+        XCTAssertEqual(contentsAfter.count, 2)
+
+        // Copy filename pattern: YYYY-MM-DD-copy-HHMM(-N)?.md — don't predict
+        // the exact name (it depends on the real "now" at call time), just
+        // the pattern ConflictCopyNamer produces.
+        let copyName = copyURL.lastPathComponent
+        XCTAssertTrue(copyName.contains("-copy-"))
+        XCTAssertTrue(copyName.hasSuffix(".md"))
+        XCTAssertNotEqual(copyURL, url)
+
+        XCTAssertEqual(try fileIO.readText(at: copyURL), "original content")
+        // The original file is unchanged.
+        XCTAssertEqual(try fileIO.readText(at: url), "original content")
+    }
 }
