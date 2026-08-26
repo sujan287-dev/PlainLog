@@ -87,6 +87,23 @@ final class FolderAccessServiceTests: XCTestCase {
         // Should still be .noFolderSelected (no bookmark stored)
         XCTAssertEqual(service.state, .noFolderSelected)
     }
+
+    func testRecoveryFlowRegisterAfterAccessLost() {
+        // Simulate access lost state
+        // We can't directly set state to .accessLost since it's set internally,
+        // but we can verify that registerFolderAccess works after clearAccess
+        // (which simulates the recovery scenario).
+        service.clearAccess()
+        XCTAssertEqual(service.state, .noFolderSelected)
+
+        // Now register a new folder (simulating recovery reselection)
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+        service.registerFolderAccess(url: tempURL)
+
+        // Verify the bookmark was saved (recovery creates a new bookmark)
+        XCTAssertNotNil(mockStore.savedData)
+        XCTAssertNotNil(service.folderDisplayNameHint)
+    }
 }
 
 // Mock Store for Testing
