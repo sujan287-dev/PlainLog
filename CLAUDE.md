@@ -53,7 +53,7 @@ One .md file per day (YYYY-MM-DD.md), written into a folder the user chooses.
     -destination 'generic/platform=iOS Simulator' build
 
 ## Current status
-Sprint 2 — Safe File I/O. Executing piece by piece.
+Sprint 3 — Editor Core. Executing piece by piece.
 Build verification: via GitHub Actions on push to main.
 QA debt (device-only, clear before TestFlight): interactive picker flow,
 cold-relaunch folder restore, folder rename/move recovery, iCloud device tests.

@@ -369,3 +369,11 @@ final class FileIOService {
             .ubiquitousItemDownloadingStatus
     }
 }
+
+// MARK: - Concurrency
+
+/// FileIOService carries no mutable state; NSFileCoordinator and FileManager
+/// are both safe to use from any thread. @unchecked Sendable lets
+/// DocumentStore dispatch file I/O to background tasks (Sprint 3 threading
+/// contract, CLAUDE.md) without concurrency warnings.
+extension FileIOService: @unchecked Sendable {}
