@@ -30,6 +30,8 @@ targets:
       - target: PlainLog
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.plainlog.ios.tests
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PlainLog.app/PlainLog"
         BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
