@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: |
+          echo "=== Available Xcode versions ==="
+          ls /Applications | grep -i xcode || true
+          # Pin to Xcode 16.2 for reproducible builds.
+          # If unavailable, fall back to the runner default and report it.
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+            echo "Pinned to Xcode 16.2"
+          else
+            echo "Xcode 16.2 not found — using runner default"
+          fi
+          echo "=== Active Xcode ==="
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Install XcodeGen if needed
+        run: |
+          if ! command -v xcodegen &> /dev/null; then
+            echo "Installing XcodeGen via Homebrew..."
+            brew install xcodegen
+          fi
+          echo "XcodeGen version:"
+          xcodegen version
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (iOS Simulator)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PlainLog.xcodeproj \
+            -scheme PlainLog \
+            -destination 'generic/platform=iOS Simulator' \
+            -quiet \
+            build 2>&1 | tail -30
+
+      - name: Verify targets
+        run: xcodebuild -project PlainLog.xcodeproj -list

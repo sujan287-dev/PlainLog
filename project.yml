@@ -1,0 +1,38 @@
+name: PlainLog
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  PlainLog:
+    type: application
+    platform: iOS
+    sources:
+      - path: PlainLog
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.plainlog.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: PlainLog
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1"
+  PlainLogTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PlainLogTests
+    dependencies:
+      - target: PlainLog
+schemes:
+  PlainLog:
+    build:
+      targets:
+        PlainLog: all
+    test:
+      targets:
+        - PlainLogTests
