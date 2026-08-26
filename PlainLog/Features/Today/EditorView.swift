@@ -1,19 +1,20 @@
 import SwiftUI
 
 /// Editor Pane — Sprint 3 (PLAN.md Feature 04).
-/// Raw Markdown editing via SwiftUI TextEditor only (spec §4: no custom
-/// UITextView in v1, no live syntax highlighting).
-/// Autosave arrives in Piece 3.3, Preview in Piece 3.4, date navigation
-/// in Sprint 4. The folder-health button moves into Settings (Feature 11)
-/// once the Settings screen exists in Sprint 5.
+/// Hosts both Edit Mode (TextEditor) and Preview Mode (MarkdownRenderer).
+/// Autosave (Piece 3.3), preview renderer (Piece 3.4). Date navigation
+/// and the summary bar arrive in Sprint 4.
 struct EditorView: View {
     let store: DocumentStore
 
     @State private var showingFolderHealth = false
+    @State private var editorMode: EditorMode = .editing
 
-    /// Single mutation path: every keystroke goes through
-    /// DocumentStore.updateText so dirty tracking is never bypassed.
-    /// A direct binding to store.currentText would skip it — do not add one.
+    enum EditorMode: Hashable {
+        case editing
+        case previewing
+    }
+
     private var textBinding: Binding<String> {
         Binding(
             get: { store.currentText },
@@ -21,8 +22,6 @@ struct EditorView: View {
         )
     }
 
-    /// Editing is allowed only when the document is loaded or pending-new.
-    /// All other states (downloading, failed, not yet loaded) lock the editor.
     private var canEdit: Bool {
         switch store.fileState {
         case .loaded, .pending:
@@ -35,7 +34,7 @@ struct EditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            editorArea
+            contentArea
             bottomBar
         }
     }
@@ -50,7 +49,14 @@ struct EditorView: View {
 
             Spacer()
 
-            // Sprint 1 Folder Health entry point. Moves into Settings in Sprint 5.
+            // Edit / Preview toggle
+            Picker("Mode", selection: $editorMode) {
+                Text("Edit").tag(EditorMode.editing)
+                Text("Preview").tag(EditorMode.previewing)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 160)
+
             Button {
                 showingFolderHealth = true
             } label: {
@@ -65,15 +71,23 @@ struct EditorView: View {
         }
     }
 
-    // MARK: - Editor area
+    // MARK: - Content area
 
-    private var editorArea: some View {
+    @ViewBuilder
+    private var contentArea: some View {
+        switch editorMode {
+        case .editing:
+            editModeContent
+        case .previewing:
+            previewModeContent
+        }
+    }
+
+    private var editModeContent: some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: textBinding)
                 .disabled(!canEdit)
 
-            // Feature 04 placeholder, shown for empty editable documents
-            // (covers both pending-new files and existing empty files).
             if store.currentText.isEmpty && canEdit {
                 Text(EditorCopy.placeholder)
                     .foregroundStyle(.tertiary)
@@ -82,6 +96,12 @@ struct EditorView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    private var previewModeContent: some View {
+        // Parse once per render. If parsing fails, renderer falls back to raw text.
+        let nodes = MarkdownParser.parse(store.currentText)
+        return MarkdownRenderer(rawText: store.currentText, nodes: nodes)
     }
 
     // MARK: - Bottom bar
