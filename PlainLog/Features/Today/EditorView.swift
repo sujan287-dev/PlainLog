@@ -42,27 +42,56 @@ struct EditorView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        HStack {
-            Text(DailyFilename(date: store.selectedDate).dateStamp)
-                .font(.headline)
-                .monospacedDigit()
+        VStack(spacing: 8) {
+            // Row 1: date navigation (Feature 09).
+            HStack {
+                Button {
+                    Task { await store.goToPreviousDay() }
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Previous day")
 
-            Spacer()
+                Spacer()
 
-            // Edit / Preview toggle
-            Picker("Mode", selection: $editorMode) {
-                Text("Edit").tag(EditorMode.editing)
-                Text("Preview").tag(EditorMode.previewing)
+                Text(DailyFilename(date: store.selectedDate).dateStamp)
+                    .font(.headline)
+                    .bold()
+                    .monospacedDigit()
+
+                Spacer()
+
+                Button {
+                    Task { await store.goToNextDay() }
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .accessibilityLabel("Next day")
             }
-            .pickerStyle(.segmented)
-            .frame(width: 160)
 
-            Button {
-                showingFolderHealth = true
-            } label: {
-                Image(systemName: "folder")
+            // Row 2: controls.
+            HStack {
+                Button("Today") {
+                    Task { await store.goToToday() }
+                }
+
+                Spacer()
+
+                // Edit / Preview toggle
+                Picker("Mode", selection: $editorMode) {
+                    Text("Edit").tag(EditorMode.editing)
+                    Text("Preview").tag(EditorMode.previewing)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+
+                Button {
+                    showingFolderHealth = true
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .accessibilityLabel("Folder Health")
             }
-            .accessibilityLabel("Folder Health")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

@@ -316,6 +316,92 @@ final class DocumentStore {
         }
     }
 
+    // MARK: - Date navigation (Feature 09)
+
+    /// Gregorian calendar bound to the device's local timezone, mirroring
+    /// DailyFilename's own construction exactly (Calendar(identifier:
+    /// .gregorian) + the local timezone, the same pair DailyFilename ends up
+    /// with via its default `calendar: Calendar = .current` argument).
+    /// Navigation math must agree with how DailyFilename computes the y/m/d
+    /// that becomes the actual filename, or navigation could disagree with
+    /// which file a given date represents.
+    ///
+    /// Computed fresh on every access, never cached: DailyFilename itself
+    /// never caches this either, and caching a stale timezone would
+    /// misclassify "same day" if the device's timezone changes mid-session
+    /// (e.g. travel).
+    private static var navigationCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    /// Navigate to the day before the currently selected date.
+    func goToPreviousDay() async {
+        guard let target = Self.navigationCalendar.date(byAdding: .day, value: -1, to: selectedDate) else {
+            return
+        }
+        await navigate(to: target)
+    }
+
+    /// Navigate to the day after the currently selected date.
+    func goToNextDay() async {
+        guard let target = Self.navigationCalendar.date(byAdding: .day, value: 1, to: selectedDate) else {
+            return
+        }
+        await navigate(to: target)
+    }
+
+    /// Navigate to the start of the current local day.
+    func goToToday() async {
+        let target = Self.navigationCalendar.startOfDay(for: Date())
+        await navigate(to: target)
+    }
+
+    /// Core save-before-switch logic (Feature 09) shared by all navigation
+    /// entry points above.
+    private func navigate(to target: Date) async {
+        // 1. No-op if already on this local day — do not disturb any
+        // in-flight debounce or reload anything.
+        if Self.navigationCalendar.isDate(target, inSameDayAs: selectedDate) {
+            return
+        }
+
+        // 2. Cancel both debounces FIRST: neither must fire against the
+        // wrong file once we start moving away from the current document —
+        // including during the save-before-switch step below, which can
+        // take a moment (async file I/O).
+        autosaveTask?.cancel()
+        parseTask?.cancel()
+
+        // 3. A folder must be connected to navigate anywhere.
+        guard folderURL != nil else { return }
+
+        // 4/5/6. Save-before-switch. Pending-and-empty is checked BEFORE
+        // isDirty, matching autosave()'s own gate ordering: a pending file
+        // that only ever received whitespace is never worth saving even if
+        // isDirty happens to be true.
+        if isPendingNewFile && !hasMeaningfulContent {
+            // Feature 09: discard silently — do not save, do not create a
+            // file — then fall through to load the target date below.
+        } else if isDirty {
+            await saveNow()
+            guard saveState == .saved else {
+                // Save failed (or got blocked by the in-flight-save guard);
+                // leave the editor on the current date rather than navigate
+                // away from unsaved content.
+                return
+            }
+        }
+        // else: already clean/saved — nothing to do before switching.
+
+        // 7. Load the target date. folderURL was confirmed non-nil above;
+        // load() also re-derives it, so re-read it fresh rather than force-
+        // unwrap a captured optional.
+        guard let folderURL else { return }
+        await load(date: target, in: folderURL)
+    }
+
     private func handleError(_ error: FileIOError) {
         switch error {
         case .cloudOnlyFileNotDownloaded:

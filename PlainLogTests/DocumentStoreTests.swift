@@ -288,4 +288,109 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertEqual(summary.tags, [])
         XCTAssertEqual(summary.expenseTotal, Decimal.zero)
     }
+
+    // MARK: - Date navigation (Feature 09)
+
+    /// Matches DocumentStore's private navigation calendar exactly (Gregorian
+    /// + device local timezone) so day-movement assertions agree with the
+    /// implementation regardless of the runner's configured timezone —
+    /// deliberately NOT the UTC-fixed calendar makeDate uses, which exists
+    /// only to make test *input* dates deterministic.
+    private func localCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    func testGoToNextDayMovesForwardOneDay() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        let cal = localCalendar()
+        let expectedNext = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: date))
+
+        await store.goToNextDay()
+
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: expectedNext))
+        XCTAssertNotEqual(
+            DailyFilename(date: store.selectedDate).dateStamp,
+            DailyFilename(date: date).dateStamp
+        )
+    }
+
+    func testGoToPreviousDayMovesBackOneDay() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        let cal = localCalendar()
+        let expectedPrevious = try XCTUnwrap(cal.date(byAdding: .day, value: -1, to: date))
+
+        await store.goToPreviousDay()
+
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: expectedPrevious))
+        XCTAssertNotEqual(
+            DailyFilename(date: store.selectedDate).dateStamp,
+            DailyFilename(date: date).dateStamp
+        )
+    }
+
+    func testGoToTodayMovesToCurrentLocalDay() async throws {
+        let date = try makeDate(year: 2020, month: 1, day: 1)
+        await store.load(date: date, in: testFolder)
+
+        await store.goToToday()
+
+        let cal = localCalendar()
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: Date()))
+    }
+
+    func testDirtyDocumentIsSavedBeforeSwitchingDay() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("original", to: url)
+
+        await store.load(date: date, in: testFolder)
+        store.updateText("modified")
+        XCTAssertTrue(store.isDirty)
+
+        await store.goToNextDay()
+
+        XCTAssertEqual(try fileIO.readText(at: url), "modified")
+
+        let cal = localCalendar()
+        let expectedNext = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: date))
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: expectedNext))
+    }
+
+    func testEmptyPendingFileIsDiscardedOnNavigation() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+
+        store.updateText("   \n\t  ")
+        XCTAssertTrue(store.isPendingNewFile)
+        XCTAssertFalse(store.hasMeaningfulContent)
+
+        await store.goToNextDay()
+
+        let url = DailyFilename(date: date).url(in: testFolder)
+        XCTAssertFalse(fileIO.fileExists(at: url))
+
+        let cal = localCalendar()
+        let expectedNext = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: date))
+        XCTAssertTrue(cal.isDate(store.selectedDate, inSameDayAs: expectedNext))
+    }
+
+    func testGoToTodayIsNoOpWhenAlreadyToday() async throws {
+        let today = Date()
+        await store.load(date: today, in: testFolder)
+        store.updateText("some text")
+        XCTAssertTrue(store.isDirty)
+        let originalSelectedDate = store.selectedDate
+
+        await store.goToToday()
+
+        XCTAssertEqual(store.selectedDate, originalSelectedDate)
+        XCTAssertTrue(store.isDirty, "A reload would have reset isDirty; it must not have occurred.")
+        XCTAssertEqual(store.currentText, "some text")
+    }
 }
