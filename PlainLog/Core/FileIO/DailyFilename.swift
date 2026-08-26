@@ -33,4 +33,10 @@ struct DailyFilename {
     func url(in folder: URL) -> URL {
         folder.appendingPathComponent(filename)
     }
+
+    /// The YYYY-MM-DD date stamp (the filename without its .md extension).
+    var dateStamp: String {
+        guard filename.hasSuffix(".md") else { return filename }
+        return String(filename.dropLast(".md".count))
+    }
 }

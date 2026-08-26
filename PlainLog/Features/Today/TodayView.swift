@@ -1,42 +1,31 @@
 import SwiftUI
 
-/// Today Screen placeholder for Sprint 2.
-/// Real editor UI arrives in Sprint 3. Currently hosts the temporary Sprint 2
-/// File I/O harness and the Folder Health sheet.
+/// Today Screen — Sprint 3 (PLAN.md IA; host for Feature 04).
+/// Created only when folder state is .folderReady (RootView routing).
+/// Owns the session's DocumentStore and loads today's file on appear.
 struct TodayView: View {
     @Environment(FolderAccessService.self) private var folderAccessService
-    @State private var showingFolderHealth = false
+    @State private var documentStore = DocumentStore()
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Today Screen")
-                .font(.largeTitle)
-                .bold()
-
-            if let url = folderAccessService.currentFolderURL {
-                Text("Connected to: \(url.lastPathComponent)")
-                    .font(.caption)
+        Group {
+            if let folder = folderAccessService.currentFolderURL {
+                EditorView(store: documentStore)
+                    // .task(id:) restarts the load if the connected folder
+                    // changes (e.g. the user reconnects via Folder Health).
+                    //
+                    // KNOWN DEFERRAL: if unsaved edits exist when the folder
+                    // changes, this reload discards them. Feature 02's
+                    // reselection-warning copy will be wired when the recovery
+                    // flow is integrated. Do not half-fix this here.
+                    .task(id: folder) {
+                        await documentStore.load(date: Date(), in: folder)
+                    }
+            } else {
+                // FolderReady routing guarantees a folder; defensive fallback.
+                Text("No folder connected.")
                     .foregroundStyle(.secondary)
             }
-
-            // SPRINT 2 TEMPORARY HARNESS — removed/replaced in Sprint 3.
-            FileIOHarnessView()
-
-            Spacer()
-
-            Button {
-                showingFolderHealth = true
-            } label: {
-                Label("Folder Health", systemImage: "folder.badge.questionmark")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-        }
-        .padding(24)
-        .sheet(isPresented: $showingFolderHealth) {
-            FolderHealthView()
         }
     }
 }

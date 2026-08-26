@@ -369,6 +369,27 @@ final class FileIOServiceTests: XCTestCase {
         return try XCTUnwrap(utcGregorianCalendar().date(from: comps))
     }
 
+    // MARK: - DailyFilename.dateStamp (Piece 3.2)
+
+    func testDailyFilenameDateStampIsFilenameWithoutExtension() throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26, hour: 12, minute: 0)
+        let dailyFilename = DailyFilename(date: date)
+
+        // Timezone-independent: dateStamp always equals filename minus ".md".
+        XCTAssertTrue(dailyFilename.filename.hasSuffix(".md"))
+        XCTAssertEqual(
+            dailyFilename.dateStamp,
+            String(dailyFilename.filename.dropLast(".md".count))
+        )
+
+        // Format guard: YYYY-MM-DD.
+        let parts = dailyFilename.dateStamp.split(separator: "-")
+        XCTAssertEqual(parts.count, 3)
+        XCTAssertEqual(parts[0].count, 4)
+        XCTAssertEqual(parts[1].count, 2)
+        XCTAssertEqual(parts[2].count, 2)
+    }
+
     func testCopyNameNoCollision() throws {
         let moment = try makeDate(year: 2026, month: 8, day: 26, hour: 15, minute: 30)
         let name = ConflictCopyNamer.nextCopyName(
