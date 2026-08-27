@@ -26,6 +26,14 @@ targets:
     platform: iOS
     sources:
       - path: PlainLogTests
+      # SKTestSession(configurationFileNamed:) resolves the .storekit file
+      # from the TEST bundle's own resources, not the app target's — CI run
+      # 33113378482 showed Product.products(for:) returning zero results
+      # (SKTestSession itself never threw) with the file only in PlainLog's
+      # bundle. Adding it here as its own source entry copies it into
+      # PlainLogTests's bundle too, without duplicating BillingKit.swift's
+      # compiled sources into this target.
+      - path: PlainLog/Core/Billing/PlainLogProducts.storekit
     dependencies:
       - target: PlainLog
     settings:
