@@ -70,10 +70,22 @@ jobs:
           # "com.apple.CoreSimulator.SimRuntime.iOS-17-0" — filtered on the
           # entries' key BEFORE flattening, so each device stays tied to its
           # own runtime.
+          #
+          # Sorted ascending (oldest eligible runtime first), not just "first
+          # match": Apple has a known regression where `xcodebuild test` from
+          # the CLI (as opposed to Xcode IDE) fails to sync a StoreKit
+          # Configuration file / SKTestSession to newer simulator runtimes
+          # (observed on iOS 26.5 — Product.products(for:) silently returns
+          # empty with no thrown error), documented workaround is to prefer
+          # an older runtime (e.g. iOS 26.1). Since regressions like this
+          # land in the newest releases, preferring the oldest 17+ runtime
+          # available on the runner is a general hedge, not just a pin to one
+          # specific version that will go stale.
           DEVICE_UDID=$(xcrun simctl list devices available -j | jq -r '
             .devices
             | to_entries
             | map(select(.key | test("iOS-(1[7-9]|[2-9][0-9])-")))
+            | sort_by(.key)
             | map(.value)
             | flatten
             | map(select(.name | test("iPhone")))
@@ -87,6 +99,9 @@ jobs:
           fi
 
           echo "Using simulator UDID: $DEVICE_UDID"
+          xcrun simctl list devices available -j | jq -r --arg udid "$DEVICE_UDID" '
+            .devices | to_entries[] | select(.value[] | .udid == $udid) | .key
+          ' | sed 's/^/Runtime: /'
 
           # No tail/truncation here (unlike the build step above): this
           # project's test suite is small, and a truncated log has already
