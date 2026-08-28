@@ -230,11 +230,10 @@ enum ExportKit {
             lines.append("## Expenses")
             for entry in expenseEntries {
                 let dayStamp = DailyFilename(date: entry.day, calendar: calendar).dateStamp
-                let amountText = ExpenseTotalDisplay.text(for: entry.amount)
-                lines.append("- \(dayStamp): \(entry.description) \u{2014} \(amountText)")
+                lines.append("- \(dayStamp): \(entry.description) \u{2014} \(formatAmount(entry.amount))")
             }
             lines.append("")
-            lines.append("Total expenses: \(ExpenseTotalDisplay.text(for: expenseTotal))")
+            lines.append("Total expenses: \(formatAmount(expenseTotal))")
         }
 
         if !skippedICloudDays.isEmpty {
@@ -243,5 +242,30 @@ enum ExportKit {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    /// Feature 13's report always shows two decimal places for money (e.g.
+    /// "15.50", "99.00") — unlike the daily summary bar's
+    /// ExpenseTotalDisplay, which drops trailing zeros for a compact
+    /// "Expenses: 118.75" readout (minimumFractionDigits = 0 there). That
+    /// formatter isn't reused here: for a whole-dollar amount it would print
+    /// "99" instead of the "99.00" Feature 13's own example requires. Same
+    /// locale-fixed, no-grouping approach otherwise (en_US_POSIX, Decimal
+    /// end-to-end via NSDecimalNumber, never bridged through Double).
+    private static func formatAmount(_ amount: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+
+        let number = NSDecimalNumber(decimal: amount)
+        if let formatted = formatter.string(from: number) {
+            return formatted
+        }
+        // Not expected for finite Decimal values, but never crash: fall back
+        // to a plain string interpolation of the Decimal.
+        return "\(amount)"
     }
 }
