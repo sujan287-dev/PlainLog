@@ -8,9 +8,11 @@ struct EditorView: View {
     let store: DocumentStore
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(BillingKit.self) private var billingKit
 
     @State private var showingFolderHealth = false
     @State private var showingHistory = false
+    @State private var showingPaywall = false
     @State private var editorMode: EditorMode = .editing
 
     // Feature 08: foreground external-change check.
@@ -180,6 +182,22 @@ struct EditorView: View {
                 }
                 .accessibilityLabel("History")
 
+                // Pro trigger (Feature 12). Non-interactive indicator once
+                // entitled; otherwise opens the paywall sheet.
+                if billingKit.isProEnabled {
+                    Text("Pro ✓")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("PlainLog Pro")
+                } else {
+                    Button {
+                        showingPaywall = true
+                    } label: {
+                        Image(systemName: "star")
+                    }
+                    .accessibilityLabel("PlainLog Pro")
+                }
+
                 // Edit / Preview toggle
                 Picker("Mode", selection: $editorMode) {
                     Text("Edit").tag(EditorMode.editing)
@@ -200,6 +218,9 @@ struct EditorView: View {
         .padding(.vertical, 8)
         .sheet(isPresented: $showingFolderHealth) {
             FolderHealthView()
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
         }
         .sheet(isPresented: $showingHistory) {
             HistoryBrowserView(
