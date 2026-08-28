@@ -25,6 +25,13 @@ struct EditorView: View {
     @State private var showingDeletedFileModal = false
     @State private var deletedFileVariant: DeletedFileModal.Variant = .withoutUnsavedEdits
 
+    // Feature 06: save-error modal, shown once per failure episode.
+    @State private var showingSaveErrorModal = false
+    @State private var saveErrorEpisodeActive = false
+
+    // Feature 07: iCloud-download modal.
+    @State private var showingICloudDownloadModal = false
+
     enum EditorMode: Hashable {
         case editing
         case previewing
@@ -70,11 +77,51 @@ struct EditorView: View {
                 ok: { Task { await reloadCurrentDocument() } }
             )
         )
+        // Feature 06: invisible carrier for the save-error modal.
+        .background(
+            SaveErrorModal(
+                isPresented: $showingSaveErrorModal,
+                retry: {
+                    // Explicit user action: a failure after this deserves
+                    // its own fresh presentation, not silent suppression.
+                    saveErrorEpisodeActive = false
+                    Task { await store.saveNow() }
+                },
+                copyText: {
+                    saveErrorEpisodeActive = false
+                    Clipboard.copy(store.currentText)
+                }
+            )
+        )
+        // Feature 07: invisible carrier for the iCloud-download modal.
+        .background(
+            ICloudDownloadModal(
+                isPresented: $showingICloudDownloadModal,
+                retry: { Task { await retryCloudDownload() } }
+            )
+        )
         // Feature 08: check for external changes whenever the app returns
         // to the foreground.
         .onChange(of: scenePhase) { oldPhase, newPhase in
             if newPhase == .active {
                 Task { await checkForExternalChanges() }
+            }
+        }
+        // Feature 06: show the save-error modal once per failure episode.
+        .onChange(of: store.saveState) { _, newValue in
+            let outcome = SaveErrorModalGuard.evaluate(state: newValue, episodeActive: saveErrorEpisodeActive)
+            saveErrorEpisodeActive = outcome.episodeActive
+            if outcome.shouldShow {
+                showingSaveErrorModal = true
+            }
+        }
+        // Feature 07: show the iCloud-download modal whenever fileState
+        // becomes .downloading. Equatable diffing on fileState already
+        // means this only fires on a genuine transition, not on every
+        // re-render of an unchanged .downloading value.
+        .onChange(of: store.fileState) { _, newValue in
+            if newValue == .downloading {
+                showingICloudDownloadModal = true
             }
         }
     }
@@ -139,6 +186,27 @@ struct EditorView: View {
     private func recreateDeletedFileThenReload() async {
         await store.saveNow()
         await reloadCurrentDocument()
+    }
+
+    // MARK: - iCloud download retry (Feature 07)
+
+    /// Requests iCloud re-download the target file, then reloads so
+    /// fileState is re-evaluated (transitions out of .downloading once the
+    /// download actually completes; stays .downloading otherwise, and the
+    /// modal simply doesn't re-pop for an unchanged value).
+    private func retryCloudDownload() async {
+        guard let folderURL = store.folderURL, let targetURL = store.targetFileURL else { return }
+
+        let fileIO = FileIOService()
+        await Task.detached(priority: .userInitiated) {
+            do {
+                try fileIO.requestCloudDownload(at: targetURL)
+            } catch {
+                Log.fileIO.error("iCloud download retry failed: \(error.localizedDescription)")
+            }
+        }.value
+
+        await store.load(date: store.selectedDate, in: folderURL)
     }
 
     // MARK: - Weekly export (Feature 13)
