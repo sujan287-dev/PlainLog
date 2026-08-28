@@ -21,6 +21,7 @@ struct SettingsView: View {
 
     @State private var showingPaywall = false
     @State private var showingFolderHealth = false
+    @State private var showingPrivacyPolicy = false
 
     var body: some View {
         NavigationStack {
@@ -46,6 +47,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingFolderHealth) {
             FolderHealthView()
+        }
+        .sheet(isPresented: $showingPrivacyPolicy) {
+            PrivacyPolicyView()
         }
     }
 
@@ -173,11 +177,12 @@ struct SettingsView: View {
     private var aboutSection: some View {
         Section(SettingsCopy.aboutSection) {
             LabeledContent(SettingsCopy.version, value: appVersion)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(SettingsCopy.privacyPolicy)
-                Text(SettingsCopy.privacyStance)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // Piece 5.10: now presents the full PrivacyPolicyView rather
+            // than an inline summary caption — the real policy is one tap
+            // away, so the short stance line it used to show here would
+            // just duplicate that content.
+            Button(SettingsCopy.privacyPolicy) {
+                showingPrivacyPolicy = true
             }
             Text(SettingsCopy.support)
         }
