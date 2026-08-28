@@ -67,15 +67,38 @@ final class SummaryDisplaySettingsTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testSummaryDisplaySettingsDefaults() {
+    // MARK: - Defaults (Piece 5.6: symbol default corrected from "$" to "")
+
+    func testSummarySettingsDefaultVisibility() {
         let settings = SummaryDisplaySettings(userDefaults: userDefaults)
-        XCTAssertEqual(settings.defaultCurrencySymbol, "$")
         XCTAssertTrue(settings.showExpenseTotal)
         XCTAssertTrue(settings.showTaskCount)
         XCTAssertTrue(settings.showTags)
     }
 
-    func testSummaryDisplaySettingsPersistence() {
+    func testCurrencySymbolDefaultIsEmpty() throws {
+        let settings = SummaryDisplaySettings(userDefaults: userDefaults)
+        XCTAssertEqual(settings.defaultCurrencySymbol, "")
+
+        // Must reproduce Feature 10's own summary bar example exactly.
+        let total = try XCTUnwrap(Decimal(string: "118.75"))
+        XCTAssertEqual(
+            SummaryBarSegments.expenseText(symbol: settings.defaultCurrencySymbol, total: total),
+            "Expenses: 118.75"
+        )
+    }
+
+    func testCurrencySymbolTrimsWhitespace() throws {
+        let total = try XCTUnwrap(Decimal(string: "118.75"))
+        XCTAssertEqual(
+            SummaryBarSegments.expenseText(symbol: "  ", total: total),
+            "Expenses: 118.75"
+        )
+    }
+
+    // MARK: - Persistence
+
+    func testVisibilityTogglesPersist() {
         let settings = SummaryDisplaySettings(userDefaults: userDefaults)
         settings.setDefaultCurrencySymbol("\u{20AC}")
         settings.setShowExpenseTotal(false)
@@ -87,5 +110,31 @@ final class SummaryDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(reloaded.showExpenseTotal)
         XCTAssertFalse(reloaded.showTaskCount)
         XCTAssertFalse(reloaded.showTags)
+    }
+}
+
+/// SummaryBarSegments tests (new in this piece) — the pure prefix-formatting
+/// helper SummaryBar's expense segment is built from. No UserDefaults, no
+/// environment, no SwiftUI rendering.
+final class SummaryBarSegmentsTests: XCTestCase {
+
+    func testExpenseSegmentWithNoSymbol() throws {
+        let total = try XCTUnwrap(Decimal(string: "118.75"))
+        XCTAssertEqual(
+            SummaryBarSegments.expenseText(symbol: "", total: total),
+            "Expenses: 118.75"
+        )
+    }
+
+    func testExpenseSegmentPrefixesTrimmedSymbol() throws {
+        let total = try XCTUnwrap(Decimal(string: "118.75"))
+        XCTAssertEqual(
+            SummaryBarSegments.expenseText(symbol: "$", total: total),
+            "Expenses: $118.75"
+        )
+        XCTAssertEqual(
+            SummaryBarSegments.expenseText(symbol: " \u{20AC} ", total: total),
+            "Expenses: \u{20AC}118.75"
+        )
     }
 }

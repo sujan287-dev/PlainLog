@@ -16,9 +16,9 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppearanceSettings.self) private var appearanceSettings
     @Environment(BillingKit.self) private var billingKit
+    @Environment(SummaryDisplaySettings.self) private var summarySettings
     @Environment(\.dismiss) private var dismiss
 
-    @State private var summarySettings = SummaryDisplaySettings()
     @State private var showingPaywall = false
     @State private var showingFolderHealth = false
 

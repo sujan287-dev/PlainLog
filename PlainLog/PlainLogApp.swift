@@ -5,6 +5,7 @@ struct PlainLogApp: App {
     @State private var folderAccessService = FolderAccessService()
     @State private var billingKit = BillingKit()
     @State private var appearanceSettings = AppearanceSettings()
+    @State private var summaryDisplaySettings = SummaryDisplaySettings()
 
     var body: some Scene {
         WindowGroup {
@@ -26,6 +27,7 @@ struct PlainLogApp: App {
             .environment(folderAccessService)
             .environment(billingKit)
             .environment(appearanceSettings)
+            .environment(summaryDisplaySettings)
             .onAppear {
                 folderAccessService.start()
             }
