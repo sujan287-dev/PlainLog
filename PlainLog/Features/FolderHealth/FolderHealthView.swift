@@ -3,11 +3,17 @@ import UniformTypeIdentifiers
 
 /// Folder Health screen per PLAN.md Feature 11 "Folder section."
 /// Shows current folder, connection status, last save time, and reconnect action.
+///
+/// Reconnect is one of Feature 02's two reselection entry points (alongside
+/// RecoveryView) — Piece 5.7 routes it through the same ReselectionFlowState
+/// so the unsaved-edits confirmation flows can't diverge between the two.
 struct FolderHealthView: View {
     @Environment(FolderAccessService.self) private var folderAccessService
+    @Environment(DocumentStore.self) private var documentStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingFileImporter = false
+    @State private var reselectionFlow = ReselectionFlowState()
 
     var body: some View {
         NavigationStack {
@@ -45,8 +51,47 @@ struct FolderHealthView: View {
             allowedContentTypes: [.folder],
             allowsMultipleSelection: false
         ) { result in
-            handleFolderSelection(result)
+            reselectionFlow.handleFolderSelection(
+                result,
+                folderAccessService: folderAccessService,
+                documentStore: documentStore
+            )
         }
+        .background(
+            ReselectionWarningModal(
+                isPresented: $reselectionFlow.showingReselectionWarning,
+                saveToSelectedFolder: {
+                    reselectionFlow.confirmReselectionWarning(
+                        folderAccessService: folderAccessService,
+                        documentStore: documentStore
+                    )
+                },
+                copyText: { reselectionFlow.copyPreservedText() },
+                cancel: { reselectionFlow.cancelPendingReselection() }
+            )
+        )
+        .background(
+            ExistingTargetFileWarningModal(
+                isPresented: $reselectionFlow.showingExistingTargetFileWarning,
+                saveAsCopy: {
+                    Task {
+                        await reselectionFlow.saveAsCopyIntoSelectedFolder(
+                            folderAccessService: folderAccessService,
+                            documentStore: documentStore
+                        )
+                    }
+                },
+                replaceExisting: {
+                    Task {
+                        await reselectionFlow.saveIntoSelectedFolder(
+                            folderAccessService: folderAccessService,
+                            documentStore: documentStore
+                        )
+                    }
+                },
+                cancel: { reselectionFlow.cancelPendingReselection() }
+            )
+        )
     }
 
     // MARK: - Computed Properties
@@ -68,22 +113,5 @@ struct FolderHealthView: View {
     private var lastSaveText: String {
         // TODO(Sprint 2): Wire to FileIOService.lastSuccessfulSaveTime
         "—"
-    }
-
-    // MARK: - Reconnect Flow
-
-    /// Reconnect uses the same flow as recovery (Feature 02 failure flow):
-    /// select folder → registerFolderAccess → FolderReady. No confirmation screen.
-    private func handleFolderSelection(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            Log.folderAccess.info("Folder Health: user reconnected to '\(url.lastPathComponent)'")
-            folderAccessService.registerFolderAccess(url: url)
-            dismiss()
-
-        case .failure(let error):
-            Log.folderAccess.error("Folder Health reconnect error: \(error.localizedDescription)")
-        }
     }
 }
