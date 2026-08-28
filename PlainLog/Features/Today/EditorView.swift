@@ -15,6 +15,11 @@ struct EditorView: View {
     @State private var showingPaywall = false
     @State private var editorMode: EditorMode = .editing
 
+    // Feature 13: weekly summary export.
+    @State private var isExporting = false
+    @State private var exportedFile: ExportedWeeklyFile?
+    @State private var exportErrorMessage: String?
+
     // Feature 08: foreground external-change check.
     @State private var showingConflictModal = false
     @State private var showingDeletedFileModal = false
@@ -136,6 +141,49 @@ struct EditorView: View {
         await reloadCurrentDocument()
     }
 
+    // MARK: - Weekly export (Feature 13)
+
+    /// Gregorian calendar bound to the device's local timezone — mirrors
+    /// DocumentStore.navigationCalendar and DailyFilename's own default
+    /// construction, so the export window agrees with which file a given
+    /// date represents.
+    private static var exportCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    /// Generates the weekly report and prepares it for the share sheet.
+    /// Runs off the main actor: WeeklyExportOrchestrator calls into
+    /// FileIOService's synchronous, background-thread-only methods.
+    private func performWeeklyExport() async {
+        guard let folderURL = store.folderURL else { return }
+
+        isExporting = true
+        defer { isExporting = false }
+
+        let fileIO = FileIOService()
+        let endDate = store.selectedDate
+        let calendar = Self.exportCalendar
+
+        let outcome = await Task.detached(priority: .userInitiated) { () -> Result<URL, String> in
+            WeeklyExportOrchestrator.export(
+                endDate: endDate,
+                folderURL: folderURL,
+                fileIO: fileIO,
+                calendar: calendar
+            )
+        }.value
+
+        switch outcome {
+        case .success(let url):
+            exportedFile = ExportedWeeklyFile(url: url)
+        case .failure(let message):
+            Log.export.error("Weekly export failed: \(message)")
+            exportErrorMessage = "Could not prepare the export file."
+        }
+    }
+
     // MARK: - Top bar
 
     private var topBar: some View {
@@ -198,6 +246,24 @@ struct EditorView: View {
                     .accessibilityLabel("PlainLog Pro")
                 }
 
+                // Weekly export trigger (Feature 13). Pro-gated: non-Pro
+                // taps open the paywall instead of generating anything.
+                Button {
+                    if billingKit.isProEnabled {
+                        Task { await performWeeklyExport() }
+                    } else {
+                        showingPaywall = true
+                    }
+                } label: {
+                    if isExporting {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                .accessibilityLabel("Weekly export")
+                .disabled(isExporting)
+
                 // Edit / Preview toggle
                 Picker("Mode", selection: $editorMode) {
                     Text("Edit").tag(EditorMode.editing)
@@ -221,6 +287,22 @@ struct EditorView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
+        }
+        .sheet(item: $exportedFile) { file in
+            ActivityShareSheet(activityItems: [file.url])
+        }
+        .alert(
+            "Export Failed",
+            isPresented: Binding(
+                get: { exportErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented { exportErrorMessage = nil }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportErrorMessage ?? "")
         }
         .sheet(isPresented: $showingHistory) {
             HistoryBrowserView(
