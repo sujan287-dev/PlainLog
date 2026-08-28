@@ -13,6 +13,7 @@ struct PlainLogApp: App {
     // could ever read them. Owning it here lets it survive that transition.
     // DocumentStore.swift itself is unchanged; only where it's created moved.
     @State private var documentStore = DocumentStore()
+    @State private var connectivityMonitor = ConnectivityMonitor()
 
     var body: some Scene {
         WindowGroup {
@@ -36,6 +37,7 @@ struct PlainLogApp: App {
             .environment(appearanceSettings)
             .environment(summaryDisplaySettings)
             .environment(documentStore)
+            .environment(connectivityMonitor)
             .onAppear {
                 folderAccessService.start()
             }

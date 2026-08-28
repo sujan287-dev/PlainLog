@@ -42,6 +42,26 @@ final class DocumentStore {
     /// Feature 03: the file is created only after the first meaningful save.
     private(set) var isPendingNewFile: Bool = false
 
+    /// Feature 07 requirement 8 / Piece 5.9: while true, performSave() skips
+    /// the write for any file that doesn't exist yet on disk (content stays
+    /// in memory, saveState returns to .idle) instead of creating it. Set
+    /// externally via blockPendingCreation()/unblockPendingCreation() by the
+    /// offline-capture confirmation flow. Defaults to false, so every
+    /// existing caller/test is completely unaffected unless this is
+    /// explicitly engaged — this never blocks saves to a file that already
+    /// exists on disk.
+    private(set) var isPendingCreationBlocked = false
+
+    /// Engages the Feature 07 offline-capture block (see isPendingCreationBlocked).
+    func blockPendingCreation() {
+        isPendingCreationBlocked = true
+    }
+
+    /// Lifts the Feature 07 offline-capture block.
+    func unblockPendingCreation() {
+        isPendingCreationBlocked = false
+    }
+
     /// Snapshot captured at load time (nil while pending or failed).
     /// Consumed by external-change checks in Piece 3.3.
     private(set) var loadedSnapshot: FileSnapshot?
@@ -268,6 +288,7 @@ final class DocumentStore {
         let text = currentText
         let url = targetFileURL
         let meaningful = hasMeaningfulContent
+        let creationBlocked = isPendingCreationBlocked
 
         // Explicit closure return type: `.success`/`.failure` shorthand can't
         // be inferred without it, since Task.detached's Success is otherwise
@@ -282,6 +303,12 @@ final class DocumentStore {
             // Done off the main actor, honoring FileIOService's threading
             // contract, alongside the write itself.
             guard meaningful || io.fileExists(at: url) else {
+                return nil
+            }
+            // Feature 07 requirement 8: a brand-new file (nothing on disk
+            // yet) is blocked pending explicit offline-capture confirmation.
+            // Never blocks a save to a file that already exists.
+            if creationBlocked && !io.fileExists(at: url) {
                 return nil
             }
             do {

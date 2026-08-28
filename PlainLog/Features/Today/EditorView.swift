@@ -9,6 +9,7 @@ struct EditorView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(BillingKit.self) private var billingKit
+    @Environment(ConnectivityMonitor.self) private var connectivityMonitor
 
     @State private var showingSettings = false
     @State private var showingHistory = false
@@ -31,6 +32,11 @@ struct EditorView: View {
 
     // Feature 07: iCloud-download modal.
     @State private var showingICloudDownloadModal = false
+
+    // Feature 07 requirement 8: offline-copy-warning, shown once per
+    // pending file (reset whenever a fresh .pending file loads).
+    @State private var showingOfflineCopyWarningModal = false
+    @State private var offlineWarningShownForCurrentFile = false
 
     enum EditorMode: Hashable {
         case editing
@@ -100,6 +106,21 @@ struct EditorView: View {
                 retry: { Task { await retryCloudDownload() } }
             )
         )
+        // Feature 07 requirement 8: invisible carrier for the offline-copy
+        // warning that gates brand-new-file creation.
+        .background(
+            OfflineCopyWarningModal(
+                isPresented: $showingOfflineCopyWarningModal,
+                createOfflineFile: {
+                    store.unblockPendingCreation()
+                    Task { await store.saveNow() }
+                },
+                cancel: {
+                    // Block stays engaged: content remains in memory as a
+                    // still-pending file. No shadow draft is ever written.
+                }
+            )
+        )
         // Feature 08: check for external changes whenever the app returns
         // to the foreground.
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -119,11 +140,48 @@ struct EditorView: View {
         // becomes .downloading. Equatable diffing on fileState already
         // means this only fires on a genuine transition, not on every
         // re-render of an unchanged .downloading value.
+        //
+        // Feature 07 requirement 8: a fresh .pending file (any load that
+        // lands on .pending — a new date, a reload, etc.) starts with a
+        // clean slate for the offline-capture warning, regardless of
+        // whatever the PREVIOUS document's gate state was.
         .onChange(of: store.fileState) { _, newValue in
             if newValue == .downloading {
                 showingICloudDownloadModal = true
             }
+            if newValue == .pending {
+                offlineWarningShownForCurrentFile = false
+                store.unblockPendingCreation()
+            }
         }
+        // Feature 07 requirement 8: the first meaningful edit to a NEW
+        // pending file is the trigger — evaluated synchronously as part of
+        // the same update that changed currentText, well before the 500ms
+        // autosave debounce (a real async delay) could fire, so the block
+        // (below) is armed before any write is attempted.
+        .onChange(of: store.currentText) { _, _ in
+            evaluateOfflineCaptureGuardIfNeeded()
+        }
+    }
+
+    // MARK: - Offline copy warning (Feature 07 requirement 8)
+
+    private func evaluateOfflineCaptureGuardIfNeeded() {
+        guard store.isPendingNewFile, store.hasMeaningfulContent, !offlineWarningShownForCurrentFile else {
+            return
+        }
+        guard let folderURL = store.folderURL else { return }
+
+        let required = OfflineCaptureGuard.isWarningRequired(
+            folderIsICloud: FolderAccessService.isICloudFolder(url: folderURL),
+            isOffline: connectivityMonitor.isOffline,
+            isCreatingNewFile: true
+        )
+        guard required else { return }
+
+        offlineWarningShownForCurrentFile = true
+        store.blockPendingCreation()
+        showingOfflineCopyWarningModal = true
     }
 
     // MARK: - Foreground external-change check (Feature 08)

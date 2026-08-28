@@ -27,4 +27,20 @@ enum Feature0607ModalCopy {
 
     static let iCloudDownloadRetryButton = "Retry"
     static let iCloudDownloadCancelButton = "Cancel"
+
+    // MARK: - Offline copy warning (Feature 07)
+
+    /// PLAN.md separates these two sentences with a blank line, matching the
+    /// same title/message split pattern as Feature02ModalCopy's reselection
+    /// and existing-target-file warnings — Title + "\n" + Message reproduces
+    /// the full block exactly.
+    static let offlineCopyWarningTitle = "You are offline."
+
+    /// Curly apostrophe (U+2019), matching PLAN.md's raw bytes exactly
+    /// (hex-checked, per the Piece 5.8 convention).
+    static let offlineCopyWarningMessage =
+        "Creating a new file now may cause a conflict later if iCloud already contains today\u{2019}s file."
+
+    static let offlineCopyWarningCreateButton = "Create offline file"
+    static let offlineCopyWarningCancelButton = "Cancel"
 }
