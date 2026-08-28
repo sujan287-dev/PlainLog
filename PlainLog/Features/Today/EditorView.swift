@@ -10,7 +10,7 @@ struct EditorView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(BillingKit.self) private var billingKit
 
-    @State private var showingFolderHealth = false
+    @State private var showingSettings = false
     @State private var showingHistory = false
     @State private var showingPaywall = false
     @State private var editorMode: EditorMode = .editing
@@ -273,17 +273,17 @@ struct EditorView: View {
                 .frame(width: 160)
 
                 Button {
-                    showingFolderHealth = true
+                    showingSettings = true
                 } label: {
-                    Image(systemName: "folder")
+                    Image(systemName: "gearshape")
                 }
-                .accessibilityLabel("Folder Health")
+                .accessibilityLabel("Settings")
             }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .sheet(isPresented: $showingFolderHealth) {
-            FolderHealthView()
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
