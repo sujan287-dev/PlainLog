@@ -166,7 +166,7 @@ struct EditorView: View {
         let endDate = store.selectedDate
         let calendar = Self.exportCalendar
 
-        let outcome = await Task.detached(priority: .userInitiated) { () -> Result<URL, String> in
+        let outcome = await Task.detached(priority: .userInitiated) { () -> Result<URL, WeeklyExportWriteError> in
             WeeklyExportOrchestrator.export(
                 endDate: endDate,
                 folderURL: folderURL,
@@ -178,8 +178,8 @@ struct EditorView: View {
         switch outcome {
         case .success(let url):
             exportedFile = ExportedWeeklyFile(url: url)
-        case .failure(let message):
-            Log.export.error("Weekly export failed: \(message)")
+        case .failure(let error):
+            Log.export.error("Weekly export failed: \(error.message)")
             exportErrorMessage = "Could not prepare the export file."
         }
     }

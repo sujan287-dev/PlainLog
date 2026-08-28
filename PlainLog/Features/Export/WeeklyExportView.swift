@@ -2,6 +2,13 @@ import Foundation
 import SwiftUI
 import UIKit
 
+/// Thrown when the generated report can't be written to a temp file.
+/// A plain String can't be used as Result's Failure type (it doesn't conform
+/// to Error), so this is a minimal wrapper carrying the underlying message.
+struct WeeklyExportWriteError: Error {
+    let message: String
+}
+
 /// Weekly export orchestration (Feature 13) — bridges the headless ExportKit
 /// service to a share-sheet-ready temp file. EditorView drives this from its
 /// Pro-gated export button; this holds no view state of its own.
@@ -21,7 +28,7 @@ enum WeeklyExportOrchestrator {
         folderURL: URL,
         fileIO: FileIOService,
         calendar: Calendar
-    ) -> Result<URL, String> {
+    ) -> Result<URL, WeeklyExportWriteError> {
         let result = ExportKit.generateWeeklySummary(
             endDate: endDate,
             folderURL: folderURL,
@@ -44,7 +51,7 @@ enum WeeklyExportOrchestrator {
             try Data(result.markdown.utf8).write(to: tempURL, options: .atomic)
             return .success(tempURL)
         } catch {
-            return .failure(error.localizedDescription)
+            return .failure(WeeklyExportWriteError(message: error.localizedDescription))
         }
     }
 }
