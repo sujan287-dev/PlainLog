@@ -43,4 +43,16 @@ enum Feature0607ModalCopy {
 
     static let offlineCopyWarningCreateButton = "Create offline file"
     static let offlineCopyWarningCancelButton = "Cancel"
+
+    /// Bugfix (H1, full-codebase audit): not from PLAN.md — an invented,
+    /// short banner label. When the offline-copy-warning is Cancelled, the
+    /// pending-creation block correctly stays engaged (no shadow draft is
+    /// ever written), but nothing was re-showing the warning afterward,
+    /// leaving the document permanently unsaveable with zero visible
+    /// explanation. This banner (EditorView, shown while
+    /// DocumentStore.isPendingCreationBlocked is true) makes that state
+    /// visible and gives the user a way back to the confirmation, instead of
+    /// a silent dead end.
+    static let offlineCaptureBlockedBanner = "Waiting for offline-capture confirmation."
+    static let offlineCaptureBlockedReviewButton = "Review"
 }

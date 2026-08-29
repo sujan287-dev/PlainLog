@@ -463,6 +463,13 @@ struct EditorView: View {
 
     private var editModeContent: some View {
         VStack(spacing: 0) {
+            // Bugfix (H1): persistent, actionable indicator while a new
+            // file's creation is blocked pending offline-capture
+            // confirmation — see blockedCreationBanner's doc comment.
+            if store.isPendingCreationBlocked {
+                blockedCreationBanner
+            }
+
             // Feature 04 large file warning (non-blocking).
             if store.isLargeFile {
                 largeFileWarningBanner
@@ -516,6 +523,33 @@ struct EditorView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Blocked-creation banner (bugfix H1, Feature 07 requirement 8)
+
+    /// Shown whenever DocumentStore.isPendingCreationBlocked is true — i.e.
+    /// the offline-copy-warning was shown and either hasn't been resolved
+    /// yet or was explicitly Cancelled. Without this, Cancelling left the
+    /// document permanently unsaveable (every save attempt and every
+    /// navigation button silently no-ops) with no visible explanation and
+    /// no way back — this banner surfaces the state and lets the user
+    /// re-open the confirmation on demand, any time, without automatically
+    /// re-popping the modal on every keystroke.
+    private var blockedCreationBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .foregroundStyle(.orange)
+            Text(Feature0607ModalCopy.offlineCaptureBlockedBanner)
+                .font(.caption)
+            Spacer()
+            Button(Feature0607ModalCopy.offlineCaptureBlockedReviewButton) {
+                showingOfflineCopyWarningModal = true
+            }
+            .font(.caption)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.1))
     }
 
     // MARK: - Large file warning (Feature 04)

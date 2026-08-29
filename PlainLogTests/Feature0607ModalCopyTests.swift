@@ -37,4 +37,10 @@ final class Feature0607ModalCopyTests: XCTestCase {
         XCTAssertEqual(Feature0607ModalCopy.offlineCopyWarningCreateButton, "Create offline file")
         XCTAssertEqual(Feature0607ModalCopy.offlineCopyWarningCancelButton, "Cancel")
     }
+
+    /// Bugfix H1 (full-codebase audit) — invented, not from PLAN.md.
+    func testOfflineCaptureBlockedBannerCopy() {
+        XCTAssertEqual(Feature0607ModalCopy.offlineCaptureBlockedBanner, "Waiting for offline-capture confirmation.")
+        XCTAssertEqual(Feature0607ModalCopy.offlineCaptureBlockedReviewButton, "Review")
+    }
 }
