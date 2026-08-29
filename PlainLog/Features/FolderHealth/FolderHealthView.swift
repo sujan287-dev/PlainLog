@@ -34,6 +34,9 @@ struct FolderHealthView: View {
                         showingFileImporter = true
                     }
                     .foregroundStyle(.blue)
+                    // Bugfix (M2): disabled while a previous reselection is
+                    // still resolving — see RecoveryView's matching comment.
+                    .disabled(reselectionFlow.isProcessing)
                 }
             }
             .navigationTitle("Folder Health")

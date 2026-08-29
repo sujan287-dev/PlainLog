@@ -22,12 +22,29 @@ final class ReselectionFlowState {
     var showingReselectionWarning = false
     var showingExistingTargetFileWarning = false
 
+    /// Bugfix (M2, full-codebase audit): true from the moment a dirty
+    /// reselection starts being evaluated until it's fully resolved (either
+    /// a modal is cancelled, or the async save/save-as-copy orchestration
+    /// completes) — cancelPendingReselection() clears it, matching every
+    /// path that ends the flow. handleFolderSelection refuses to start a
+    /// second evaluation while this is true, so a second folder pick during
+    /// that window can never overwrite pendingReselectionURL/preservedText
+    /// out from under the first attempt. Views should also disable their
+    /// trigger button while this is true — the primary, non-racy UX signal;
+    /// this flag is the defense-in-depth backstop.
+    private(set) var isProcessing = false
+
     /// Entry point: call from a fileImporter's completion handler.
     func handleFolderSelection(
         _ result: Result<[URL], Error>,
         folderAccessService: FolderAccessService,
         documentStore: DocumentStore
     ) {
+        guard !isProcessing else {
+            Log.folderAccess.info("Reselection: ignored a folder pick while a previous one is still in flight.")
+            return
+        }
+
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
@@ -48,6 +65,8 @@ final class ReselectionFlowState {
             folderAccessService.registerFolderAccess(url: url)
             return
         }
+
+        isProcessing = true
 
         let nameMatches = folderAccessService.folderDisplayNameHint == url.lastPathComponent
         let todayExists = ReselectionCoordinator.todayFileExists(in: url)
@@ -98,6 +117,7 @@ final class ReselectionFlowState {
         pendingReselectionURL = nil
         pendingRequirement = []
         preservedText = ""
+        isProcessing = false
     }
 
     /// "Save to selected folder" / the no-warning-needed automatic path /

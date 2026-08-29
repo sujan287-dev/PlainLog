@@ -138,6 +138,11 @@ struct RecoveryView: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        // Bugfix (M2): disabled while a previous reselection is still
+        // resolving, so a second pick can't race the first and clobber its
+        // pending state — the primary, non-racy UX signal backing
+        // ReselectionFlowState's own isProcessing re-entrancy guard.
+        .disabled(reselectionFlow.isProcessing)
 
         if documentStore.isDirty {
             Button {
