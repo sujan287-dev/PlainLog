@@ -4,14 +4,23 @@ import Foundation
 /// Do not paraphrase. Do not edit without updating PLAN.md and the tests
 /// together.
 ///
-/// PLAN.md's raw text separates these into paragraphs with blank lines
-/// (e.g. "You have unsaved edits." / blank / "PlainLog cannot verify...").
+/// Note on paragraph spacing (corrected, M3 — full-codebase audit): PLAN.md
+/// separates several of these sentences with blank lines (e.g. "You have
+/// unsaved edits." / blank line / "PlainLog cannot verify..."). Piece 5.7
+/// deliberately collapsed those internal blank lines to single "\n"s in
+/// recoveryWithEditsBody and reselectionWarningMessage, following the exact
+/// literal string given in that piece's own prompt rather than PLAN.md's raw
+/// formatting — a disclosed choice at the time, not an oversight. Character
+/// content is correct; only the paragraph spacing differs from PLAN.md's raw
+/// text for those two constants specifically.
+/// existingTargetFileWarningTitle/Message have no internal blank line in
+/// PLAN.md to begin with, so — unlike the two above — Title + "\n" + Message
+/// there does reproduce PLAN.md's spacing exactly.
+///
 /// The reselection-warning and existing-target-file blocks have no separate
 /// title line the way the recovery/conflict modals do, so each is split at
-/// its own first paragraph break into a Title + Message pair — Title holds
-/// that opening sentence, Message holds the rest, and Title + "\n" + Message
-/// reproduces the block exactly. This also lets each drive a standard
-/// SwiftUI .alert(title:message:), matching ConflictModal's own pattern.
+/// its own first paragraph break into a Title + Message pair for display
+/// (SwiftUI .alert(title:message:), matching ConflictModal's own pattern).
 enum Feature02ModalCopy {
 
     // MARK: - Recovery screen, with unsaved edits
