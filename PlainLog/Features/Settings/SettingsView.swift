@@ -161,6 +161,7 @@ struct SettingsView: View {
         Section(SettingsCopy.proSection) {
             if billingKit.isProEnabled {
                 LabeledContent(PaywallCopy.title, value: "Active")
+                supporterBadge
             } else {
                 Button(PaywallCopy.buyButton) {
                     showingPaywall = true
@@ -168,6 +169,23 @@ struct SettingsView: View {
             }
             Button(PaywallCopy.restoreButton) {
                 Task { await billingKit.restorePurchases() }
+            }
+        }
+    }
+
+    /// Supporter badge (Feature 12 "Pro features" list) — a visual
+    /// thank-you token only, shown while Pro is active. Gates nothing.
+    private var supporterBadge: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "heart.fill")
+                .foregroundStyle(.pink)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(SettingsProCopy.supporterBadgeLabel)
+                    .font(.subheadline)
+                    .bold()
+                Text(SettingsProCopy.supporterBadgeCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
