@@ -9,6 +9,13 @@ struct WeeklySummaryResult {
     /// Days in the 7-day window whose daily file exists in iCloud but wasn't
     /// downloaded locally, and so was excluded from the report.
     let skippedICloudDays: [Date]
+    /// Bugfix (M1, full-codebase audit): days in the window whose file
+    /// exists locally (or whose iCloud download previously failed) but
+    /// couldn't actually be read (encoding error, coordination failure,
+    /// permission error, etc.) — excluded from the report. Previously these
+    /// were silently dropped via `try?` with no record anywhere, unlike
+    /// skippedICloudDays.
+    let skippedUnreadableDays: [Date]
 }
 
 /// ExportKit — Sprint 5 (PLAN.md Feature 13).
@@ -51,6 +58,7 @@ enum ExportKit {
         var tagEntries: [String: [(day: Date, line: String)]] = [:]
         var expenseEntries: [(day: Date, description: String, amount: Decimal)] = []
         var skippedICloudDays: [Date] = []
+        var skippedUnreadableDays: [Date] = []
 
         for day in days {
             let fileURL = DailyFilename(date: day, calendar: calendar).url(in: folderURL)
@@ -62,16 +70,31 @@ enum ExportKit {
             // instead of recording it in skippedICloudDays — the same bug
             // class FileIOService.openDailyFile and readText(at:) both guard
             // against (see their doc comments). Same reasoning here.
+            //
+            // Bugfix (M1): .downloadFailed means a download attempt already
+            // failed for this file — it's not reliably readable locally, so
+            // it's tracked as unreadable rather than silently falling
+            // through to the existence/read attempt below.
             switch fileIO.iCloudState(at: fileURL) {
             case .cloudOnly, .downloading:
                 skippedICloudDays.append(day)
                 continue
-            case .notICloud, .localReady, .downloadFailed:
+            case .downloadFailed:
+                skippedUnreadableDays.append(day)
+                continue
+            case .notICloud, .localReady:
                 break
             }
 
             guard fileIO.fileExists(at: fileURL) else { continue }
-            guard let content = try? fileIO.readText(at: fileURL) else { continue }
+            // Bugfix (M1): a readText failure (encoding error, coordination
+            // failure, permission error, etc.) used to be silently dropped
+            // via bare `try?` — now tracked and surfaced in the report,
+            // same as an iCloud-only skip.
+            guard let content = try? fileIO.readText(at: fileURL) else {
+                skippedUnreadableDays.append(day)
+                continue
+            }
 
             for task in TaskParser.parse(content) {
                 if task.isCompleted {
@@ -117,13 +140,15 @@ enum ExportKit {
             expenseTotal: expenseTotal,
             usedFutureDateFallback: usedFutureDateFallback,
             skippedICloudDays: skippedICloudDays,
+            skippedUnreadableDays: skippedUnreadableDays,
             calendar: calendar
         )
 
         return WeeklySummaryResult(
             markdown: markdown,
             usedFutureDateFallback: usedFutureDateFallback,
-            skippedICloudDays: skippedICloudDays
+            skippedICloudDays: skippedICloudDays,
+            skippedUnreadableDays: skippedUnreadableDays
         )
     }
 
@@ -180,6 +205,7 @@ enum ExportKit {
         expenseTotal: Decimal,
         usedFutureDateFallback: Bool,
         skippedICloudDays: [Date],
+        skippedUnreadableDays: [Date],
         calendar: Calendar
     ) -> String {
         var lines: [String] = []
@@ -239,6 +265,15 @@ enum ExportKit {
         if !skippedICloudDays.isEmpty {
             lines.append("")
             lines.append("> Some files are still in iCloud and were not included in this export.")
+        }
+
+        // Bugfix (M1): notice text is invented (not in PLAN.md, which only
+        // specifies the iCloud-missing notice) — an unreadable local file
+        // is a different, previously-silent failure mode that deserves its
+        // own honest notice rather than staying unmentioned.
+        if !skippedUnreadableDays.isEmpty {
+            lines.append("")
+            lines.append("> Some files could not be read and were not included in this export.")
         }
 
         return lines.joined(separator: "\n")

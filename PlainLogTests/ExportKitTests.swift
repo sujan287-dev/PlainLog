@@ -146,6 +146,39 @@ final class ExportKitTests: XCTestCase {
         XCTAssertFalse(result.markdown.contains("## Tags"))
     }
 
+    /// Bugfix M1 (full-codebase audit): a local file that exists but can't
+    /// actually be read (here, invalid UTF-8) must be tracked and surfaced
+    /// in the report, not silently dropped via a bare `try?`.
+    func testWeeklySummaryTracksUnreadableLocalFiles() throws {
+        let calendar = utcCalendar()
+        let dayA = try makeDate(year: 2026, month: 8, day: 24)
+        let dayC = try makeDate(year: 2026, month: 8, day: 26)
+
+        try writeDailyFile("- [x] Task A\n", date: dayA, calendar: calendar)
+
+        // Write invalid UTF-8 bytes directly (bypassing FileIOService,
+        // which only ever writes valid UTF-8) to simulate a corrupted /
+        // unreadable local file — matches FileIOServiceTests' own
+        // testReadNonUTF8FileThrowsEncodingFailed technique.
+        let unreadableURL = DailyFilename(date: dayC, calendar: calendar).url(in: testFolder)
+        try Data([0xFF, 0xFE, 0xFD]).write(to: unreadableURL)
+
+        let result = ExportKit.generateWeeklySummary(
+            endDate: dayC,
+            folderURL: testFolder,
+            fileIO: fileIO,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.skippedUnreadableDays.count, 1)
+        XCTAssertTrue(result.skippedICloudDays.isEmpty)
+        // The readable day's content still makes it into the report.
+        XCTAssertTrue(result.markdown.contains("## Completed Tasks\n- Task A"))
+        XCTAssertTrue(result.markdown.contains(
+            "> Some files could not be read and were not included in this export."
+        ))
+    }
+
     // MARK: - Future date clamping
 
     func testWeeklySummaryClampsFutureDate() throws {
