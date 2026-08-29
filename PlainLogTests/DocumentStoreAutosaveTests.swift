@@ -244,6 +244,28 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertEqual(store.saveState, .saved)
     }
 
+    /// Bugfix regression: a brand-new file's fileState must advance to
+    /// .loaded on its first successful save, not stay .pending forever —
+    /// EditorView's foreground external-change/conflict/deletion detection
+    /// (Feature 08) is gated on `case .loaded = fileState` and was silently
+    /// disabled for the common case (today's freshly-created file) before
+    /// this fix.
+    func testSaveNowOnPendingFileAdvancesFileStateToLoaded() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+        XCTAssertEqual(store.fileState, .pending)
+
+        store.updateText("# Log\n- [ ] task")
+        await store.saveNow()
+
+        guard case .loaded(let text, let snapshot) = store.fileState else {
+            XCTFail("Expected fileState to advance to .loaded after the first save, got \(String(describing: store.fileState))")
+            return
+        }
+        XCTAssertEqual(text, "# Log\n- [ ] task")
+        XCTAssertNotNil(snapshot)
+    }
+
     func testSaveNowOnExistingFileClearedToEmptyStillSaves() async throws {
         // The blank-file gate must only block creating a NEW file — clearing
         // an EXISTING file to empty is a deliberate user action and must

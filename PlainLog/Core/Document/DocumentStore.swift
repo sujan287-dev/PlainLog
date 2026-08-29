@@ -336,7 +336,18 @@ final class DocumentStore {
             isPendingNewFile = false
             saveState = .saved
             // Capture a fresh snapshot for external-change detection.
-            loadedSnapshot = await Task.detached { io.takeSnapshot(at: url) }.value
+            let snapshot = await Task.detached { io.takeSnapshot(at: url) }.value
+            loadedSnapshot = snapshot
+            // Bugfix: advance fileState to .loaded now that a real file
+            // exists on disk. Without this, a brand-new file's fileState
+            // stayed .pending for the rest of the session (nothing else
+            // ever set it), which silently disabled Feature 08's foreground
+            // external-change/conflict/deletion detection — EditorView.
+            // checkForExternalChanges() only runs when `case .loaded =
+            // fileState` — for the common case of a freshly created daily
+            // file, until the user navigated away and back. `text` (not
+            // live currentText) for the same reason as lastSavedText above.
+            fileState = .loaded(text: text, snapshot: snapshot)
 
         case .failure(let error):
             handleError(error)
