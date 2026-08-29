@@ -34,11 +34,4 @@ enum SettingsCopy {
     static let version = "Version"
     static let privacyPolicy = "Privacy policy"
     static let support = "Support"
-
-    /// Shown under "Privacy policy". Feature 11 lists only the row label —
-    /// no policy document or URL exists anywhere in PLAN.md, so this shows
-    /// the actual privacy stance inline instead of linking to nothing.
-    /// Composed from PaywallCopy's own verbatim trust lines (Feature 12)
-    /// plus CLAUDE.md's locked "no tracking" constraint (§4).
-    static let privacyStance = "\(PaywallCopy.trustNoAccount) \(PaywallCopy.trustNoData) No tracking."
 }

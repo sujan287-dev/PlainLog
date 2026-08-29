@@ -33,15 +33,6 @@ final class SettingsCopyTests: XCTestCase {
         XCTAssertEqual(SettingsCopy.privacyPolicy, "Privacy policy")
         XCTAssertEqual(SettingsCopy.support, "Support")
     }
-
-    // MARK: - Privacy stance
-
-    func testAboutPrivacyStance() {
-        XCTAssertEqual(
-            SettingsCopy.privacyStance,
-            "No account. No data collection. No tracking."
-        )
-    }
 }
 
 /// SummaryDisplaySettings tests (new in this piece). Same fresh-UserDefaults-
