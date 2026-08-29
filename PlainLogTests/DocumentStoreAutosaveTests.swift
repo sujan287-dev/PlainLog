@@ -244,6 +244,44 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertEqual(store.saveState, .saved)
     }
 
+    /// Bugfix L1 (full-codebase audit): a write that fails specifically
+    /// because the folder isn't writable must route through
+    /// onUnwritableFolder, not just become a generic save-error message.
+    /// Real read-only-directory permission failure (not a mock) — CI runs
+    /// on macOS as a standard non-root user, so this is reliably enforced.
+    func testPermissionDeniedWriteRoutesToOnUnwritableFolder() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        let url = DailyFilename(date: date).url(in: testFolder)
+        try fileIO.writeText("initial", to: url)
+
+        await store.load(date: date, in: testFolder)
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555],
+            ofItemAtPath: testFolder.path
+        )
+        defer {
+            // Restore write permission so tearDown can remove the folder.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: testFolder.path
+            )
+        }
+
+        var reportedReason: String?
+        store.onUnwritableFolder = { reason in reportedReason = reason }
+
+        store.updateText("modified")
+        await store.saveNow()
+
+        XCTAssertNotNil(reportedReason, "A permission-denied write must invoke onUnwritableFolder.")
+        guard case .saveFailed(let reason) = store.saveState else {
+            XCTFail("Expected saveState to be .saveFailed, got \(String(describing: store.saveState))")
+            return
+        }
+        XCTAssertTrue(reason.contains("not writable"))
+    }
+
     /// Bugfix H4 (full-codebase audit): lastSuccessfulSaveTime must be set
     /// on a successful save — FolderHealthView's "Last successful save" row
     /// was a static "—" placeholder because nothing tracked this at all.

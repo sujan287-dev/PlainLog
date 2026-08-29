@@ -62,6 +62,16 @@ final class DocumentStore {
         isPendingCreationBlocked = false
     }
 
+    /// Bugfix (L1, full-codebase audit): invoked with a human-readable
+    /// reason when a save fails specifically because the folder isn't
+    /// writable (FileIOError.permissionDenied). Optional and unset by
+    /// default (nil = no-op), so every existing caller/test is unaffected;
+    /// PlainLogApp wires this once to
+    /// FolderAccessService.reportUnwritableFolder, routing a permission
+    /// failure to the existing, previously-unreachable .folderUnwritable
+    /// recovery screen instead of a generic save-error message.
+    var onUnwritableFolder: ((String) -> Void)?
+
     /// Snapshot captured at load time (nil while pending or failed).
     /// Consumed by external-change checks in Piece 3.3.
     private(set) var loadedSnapshot: FileSnapshot?
@@ -487,6 +497,15 @@ final class DocumentStore {
             saveState = .saveFailed(reason: "File access coordination failed")
         case .downloadRequestFailed(let message):
             saveState = .saveFailed(reason: "iCloud download failed: \(message)")
+        case .permissionDenied(let message):
+            saveState = .saveFailed(reason: "Folder is not writable: \(message)")
+            // Bugfix (L1): route to the folder-reconnection recovery flow
+            // instead of leaving this indistinguishable from any other
+            // generic, retry-worthy save failure. DocumentStore has no
+            // direct reference to FolderAccessService (by design), so this
+            // is an optional callback PlainLogApp wires once, connecting
+            // the two without coupling this file to that service.
+            onUnwritableFolder?(message)
         }
     }
 }

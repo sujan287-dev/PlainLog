@@ -125,6 +125,14 @@ final class FileIOService {
                 try data.write(to: coordinatedURL, options: [.atomic])
             } catch let error as FileIOError {
                 blockError = error
+            } catch let error as CocoaError where error.code == .fileWriteNoPermission
+                || error.code == .fileWriteVolumeReadOnly {
+                // Bugfix (L1): distinguish "this destination isn't
+                // writable" from a generic I/O failure, so callers can
+                // route it to the folder-reconnection recovery flow
+                // (FolderAccessService.reportUnwritableFolder) instead of a
+                // plain retry-worthy save error.
+                blockError = .permissionDenied(error.localizedDescription)
             } catch {
                 blockError = .underlying(error.localizedDescription)
             }

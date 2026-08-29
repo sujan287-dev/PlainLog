@@ -27,4 +27,13 @@ enum FileIOError: Error, Equatable {
 
     /// A request to download an iCloud item could not be started.
     case downloadRequestFailed(String)
+
+    /// Bugfix (L1, full-codebase audit): the write failed specifically
+    /// because the destination isn't writable (no permission, or a
+    /// read-only volume) — as opposed to a generic I/O failure. Detected in
+    /// FileIOService.writeText via the underlying CocoaError code, so
+    /// callers (DocumentStore) can distinguish "this folder itself needs
+    /// reconnecting" from an ordinary transient write error and route to
+    /// FolderAccessService.reportUnwritableFolder accordingly.
+    case permissionDenied(String)
 }

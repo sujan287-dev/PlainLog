@@ -40,6 +40,13 @@ struct PlainLogApp: App {
             .environment(connectivityMonitor)
             .onAppear {
                 folderAccessService.start()
+                // Bugfix (L1, full-codebase audit): wire the previously-
+                // unreachable .folderUnwritable recovery flow — a
+                // permission-denied save now routes here instead of only
+                // ever surfacing as a generic save-error message.
+                documentStore.onUnwritableFolder = { reason in
+                    folderAccessService.reportUnwritableFolder(reason: reason)
+                }
             }
             .task {
                 await billingKit.loadProducts()
