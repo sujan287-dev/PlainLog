@@ -90,7 +90,18 @@ final class BillingKit {
                 switch verification {
                 case .verified(let transaction):
                     await transaction.finish()
-                    await updateEntitlement()
+                    // Bugfix (entitlement revocation): a just-verified
+                    // transaction is definitive proof of entitlement —
+                    // apply it directly rather than re-deriving it from a
+                    // fresh Transaction.currentEntitlements enumeration,
+                    // which could theoretically lag behind this exact
+                    // transaction by a moment. Never lets a purchase that
+                    // just succeeded fail to unlock immediately.
+                    applyEntitlement(EntitlementDecision.evaluate(
+                        verifiedFound: true,
+                        current: isProEnabled,
+                        allowDowngrade: false
+                    ))
                     purchaseState = .purchased
                 case .unverified(_, let error):
                     purchaseState = .failed(reason: error.localizedDescription)
@@ -116,7 +127,10 @@ final class BillingKit {
         restoreState = .restoring
         do {
             try await AppStore.sync()
-            await updateEntitlement()
+            // Bugfix (entitlement revocation): explicit, user-initiated
+            // restore is the one authoritative context where a genuine
+            // refund/revocation should actually take effect.
+            await updateEntitlement(allowDowngrade: true)
             restoreState = .restored
         } catch {
             restoreState = .failed(reason: error.localizedDescription)
@@ -125,18 +139,31 @@ final class BillingKit {
 
     // MARK: - Entitlement
 
-    /// Checks Transaction.currentEntitlements for our product ID and updates
-    /// isProEnabled and the persisted local entitlement accordingly.
-    private func updateEntitlement() async {
-        var entitled = false
+    /// Applies a decided entitlement value: updates isProEnabled and
+    /// persists it. The one place that writes the persisted key, shared by
+    /// every entitlement-determining path.
+    private func applyEntitlement(_ entitled: Bool) {
+        isProEnabled = entitled
+        userDefaults.set(entitled, forKey: Self.entitlementKey)
+    }
+
+    /// Checks Transaction.currentEntitlements for our product ID and applies
+    /// the resulting EntitlementDecision. allowDowngrade controls whether a
+    /// NOT-found result is trusted enough to revoke an existing entitlement
+    /// — see EntitlementDecision's doc comment.
+    private func updateEntitlement(allowDowngrade: Bool) async {
+        var verifiedFound = false
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result, transaction.productID == Self.productID {
-                entitled = true
+                verifiedFound = true
                 break
             }
         }
-        isProEnabled = entitled
-        userDefaults.set(entitled, forKey: Self.entitlementKey)
+        applyEntitlement(EntitlementDecision.evaluate(
+            verifiedFound: verifiedFound,
+            current: isProEnabled,
+            allowDowngrade: allowDowngrade
+        ))
     }
 
     // MARK: - Transaction listener
@@ -152,7 +179,13 @@ final class BillingKit {
                 continue
             }
             await transaction.finish()
-            await updateEntitlement()
+            // Bugfix (entitlement revocation): a passive background
+            // trigger — don't let a possibly transient/incomplete
+            // currentEntitlements enumeration silently revoke a paying
+            // customer's access with no user action to notice or correct
+            // it. A genuine revocation still gets reflected the next time
+            // the user (or a fresh restore) re-checks.
+            await updateEntitlement(allowDowngrade: false)
         }
     }
 }
