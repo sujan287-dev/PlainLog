@@ -66,6 +66,13 @@ final class DocumentStore {
     /// Consumed by external-change checks in Piece 3.3.
     private(set) var loadedSnapshot: FileSnapshot?
 
+    /// Bugfix (H4, full-codebase audit): timestamp of the most recent
+    /// successful write, set in performSave()'s success case. nil until the
+    /// first save of this DocumentStore instance's lifetime. Feature 11's
+    /// Folder Health screen shows this ("Last successful save: 09:41") —
+    /// it was a static "—" placeholder from Sprint 1 that was never wired.
+    private(set) var lastSuccessfulSaveTime: Date?
+
     /// Debounced autosave task. Cancelled and restarted on every updateText call.
     private var autosaveTask: Task<Void, Never>?
 
@@ -348,6 +355,7 @@ final class DocumentStore {
             // file, until the user navigated away and back. `text` (not
             // live currentText) for the same reason as lastSavedText above.
             fileState = .loaded(text: text, snapshot: snapshot)
+            lastSuccessfulSaveTime = Date()
 
         case .failure(let error):
             handleError(error)

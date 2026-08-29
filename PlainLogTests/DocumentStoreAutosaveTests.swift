@@ -244,6 +244,24 @@ final class DocumentStoreAutosaveTests: XCTestCase {
         XCTAssertEqual(store.saveState, .saved)
     }
 
+    /// Bugfix H4 (full-codebase audit): lastSuccessfulSaveTime must be set
+    /// on a successful save — FolderHealthView's "Last successful save" row
+    /// was a static "—" placeholder because nothing tracked this at all.
+    func testSaveNowSetsLastSuccessfulSaveTime() async throws {
+        let date = try makeDate(year: 2026, month: 8, day: 26)
+        await store.load(date: date, in: testFolder)
+        XCTAssertNil(store.lastSuccessfulSaveTime)
+
+        let beforeSave = Date()
+        store.updateText("# Log")
+        await store.saveNow()
+        let afterSave = Date()
+
+        let saveTime = try XCTUnwrap(store.lastSuccessfulSaveTime)
+        XCTAssertGreaterThanOrEqual(saveTime, beforeSave)
+        XCTAssertLessThanOrEqual(saveTime, afterSave)
+    }
+
     /// Bugfix regression: a brand-new file's fileState must advance to
     /// .loaded on its first successful save, not stay .pending forever —
     /// EditorView's foreground external-change/conflict/deletion detection

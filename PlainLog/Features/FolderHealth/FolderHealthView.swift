@@ -108,10 +108,15 @@ struct FolderHealthView: View {
         return "Unknown"
     }
 
-    /// Last successful save time.
-    /// Sprint 1: placeholder — FileIOService (Sprint 2) will provide real data.
+    /// Last successful save time, formatted per Feature 11's own example
+    /// ("Last successful save: 09:41"). "—" when nothing has been saved yet
+    /// this session (bugfix H4, full-codebase audit — this was a static
+    /// Sprint-1 placeholder, never wired, until now).
     private var lastSaveText: String {
-        // TODO(Sprint 2): Wire to FileIOService.lastSuccessfulSaveTime
-        "—"
+        guard let time = documentStore.lastSuccessfulSaveTime else { return "\u{2014}" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.timeZone = .current
+        return formatter.string(from: time)
     }
 }
