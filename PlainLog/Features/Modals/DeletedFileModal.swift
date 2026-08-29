@@ -4,7 +4,10 @@ import SwiftUI
 /// Shown when the active file was deleted outside PlainLog. Two variants
 /// depending on whether there are unsaved edits — no merge logic in either.
 struct DeletedFileModal: View {
-    enum Variant {
+    /// Equatable (bugfix H3): EditorView's modal-presentation queue keys
+    /// its .deletedFile(Variant) case on this, to know which modal (if any)
+    /// is currently the front of the queue.
+    enum Variant: Equatable {
         case withUnsavedEdits
         case withoutUnsavedEdits
     }

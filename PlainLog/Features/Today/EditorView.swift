@@ -21,21 +21,39 @@ struct EditorView: View {
     @State private var exportedFile: ExportedWeeklyFile?
     @State private var exportErrorMessage: String?
 
-    // Feature 08: foreground external-change check.
-    @State private var showingConflictModal = false
-    @State private var showingDeletedFileModal = false
-    @State private var deletedFileVariant: DeletedFileModal.Variant = .withoutUnsavedEdits
+    // Bugfix (H3): all five .alert-based modals below are coordinated
+    // through EditorModalQueue (see its own doc comment) instead of five
+    // independent @State flags that could flip true concurrently and
+    // silently lose one modal's presentation to UIKit's single-alert limit.
+    @State private var modalQueue = EditorModalQueue()
+
+    private var activeModal: EditorModal? { modalQueue.active }
+
+    private func presentModal(_ modal: EditorModal) {
+        modalQueue.present(modal)
+    }
+
+    private func dismissActiveModal() {
+        modalQueue.dismissActive()
+    }
+
+    /// isPresented binding for one modal case: true only while it's the
+    /// active (front-of-queue) modal; setting it false (SwiftUI does this
+    /// on any button tap or alert dismissal) advances the queue.
+    private func modalBinding(for modal: EditorModal) -> Binding<Bool> {
+        Binding(
+            get: { activeModal == modal },
+            set: { isPresented in
+                if !isPresented { dismissActiveModal() }
+            }
+        )
+    }
 
     // Feature 06: save-error modal, shown once per failure episode.
-    @State private var showingSaveErrorModal = false
     @State private var saveErrorEpisodeActive = false
-
-    // Feature 07: iCloud-download modal.
-    @State private var showingICloudDownloadModal = false
 
     // Feature 07 requirement 8: offline-copy-warning, shown once per
     // pending file (reset whenever a fresh .pending file loads).
-    @State private var showingOfflineCopyWarningModal = false
     @State private var offlineWarningShownForCurrentFile = false
 
     enum EditorMode: Hashable {
@@ -65,62 +83,67 @@ struct EditorView: View {
             contentArea
             bottomBar
         }
-        // Feature 08: invisible carriers for the .alert-based modals below,
-        // driven by the @State flags the foreground check sets.
-        .background(
-            ConflictModal(
-                isPresented: $showingConflictModal,
-                reload: { Task { await reloadCurrentDocument() } },
-                saveAsCopy: { Task { await saveCurrentDocumentAsCopyThenReload() } }
-            )
-        )
-        .background(
-            DeletedFileModal(
-                isPresented: $showingDeletedFileModal,
-                variant: deletedFileVariant,
-                recreate: { Task { await recreateDeletedFileThenReload() } },
-                discard: { Task { await reloadCurrentDocument() } },
-                ok: { Task { await reloadCurrentDocument() } }
-            )
-        )
-        // Feature 06: invisible carrier for the save-error modal.
-        .background(
-            SaveErrorModal(
-                isPresented: $showingSaveErrorModal,
-                retry: {
-                    // Explicit user action: a failure after this deserves
-                    // its own fresh presentation, not silent suppression.
-                    saveErrorEpisodeActive = false
-                    Task { await store.saveNow() }
-                },
-                copyText: {
-                    saveErrorEpisodeActive = false
-                    Clipboard.copy(store.currentText)
-                }
-            )
-        )
-        // Feature 07: invisible carrier for the iCloud-download modal.
-        .background(
-            ICloudDownloadModal(
-                isPresented: $showingICloudDownloadModal,
-                retry: { Task { await retryCloudDownload() } }
-            )
-        )
-        // Feature 07 requirement 8: invisible carrier for the offline-copy
-        // warning that gates brand-new-file creation.
-        .background(
-            OfflineCopyWarningModal(
-                isPresented: $showingOfflineCopyWarningModal,
-                createOfflineFile: {
-                    store.unblockPendingCreation()
-                    Task { await store.saveNow() }
-                },
-                cancel: {
-                    // Block stays engaged: content remains in memory as a
-                    // still-pending file. No shadow draft is ever written.
-                }
-            )
-        )
+        // Bugfix (H3): a single invisible carrier renders at most one of
+        // the five .alert-based modals at a time, driven by modalQueue.
+        // Each modal's own isPresented binding maps true/false against
+        // "is THIS the active modal" — SwiftUI clears it to false when any
+        // button is tapped (or the alert is otherwise dismissed), and that
+        // `set` closure advances the queue so the next enqueued modal (if
+        // any) presents next, instead of a second .background firing a
+        // second .alert concurrently and silently losing the race.
+        .background {
+            switch activeModal {
+            case .conflict:
+                ConflictModal(
+                    isPresented: modalBinding(for: .conflict),
+                    reload: { Task { await reloadCurrentDocument() } },
+                    saveAsCopy: { Task { await saveCurrentDocumentAsCopyThenReload() } }
+                )
+            case .deletedFile(let variant):
+                DeletedFileModal(
+                    isPresented: modalBinding(for: .deletedFile(variant)),
+                    variant: variant,
+                    recreate: { Task { await recreateDeletedFileThenReload() } },
+                    discard: { Task { await reloadCurrentDocument() } },
+                    ok: { Task { await reloadCurrentDocument() } }
+                )
+            case .saveError:
+                SaveErrorModal(
+                    isPresented: modalBinding(for: .saveError),
+                    retry: {
+                        // Explicit user action: a failure after this
+                        // deserves its own fresh presentation, not silent
+                        // suppression.
+                        saveErrorEpisodeActive = false
+                        Task { await store.saveNow() }
+                    },
+                    copyText: {
+                        saveErrorEpisodeActive = false
+                        Clipboard.copy(store.currentText)
+                    }
+                )
+            case .iCloudDownload:
+                ICloudDownloadModal(
+                    isPresented: modalBinding(for: .iCloudDownload),
+                    retry: { Task { await retryCloudDownload() } }
+                )
+            case .offlineCopyWarning:
+                OfflineCopyWarningModal(
+                    isPresented: modalBinding(for: .offlineCopyWarning),
+                    createOfflineFile: {
+                        store.unblockPendingCreation()
+                        Task { await store.saveNow() }
+                    },
+                    cancel: {
+                        // Block stays engaged: content remains in memory as
+                        // a still-pending file. No shadow draft is ever
+                        // written.
+                    }
+                )
+            case nil:
+                EmptyView()
+            }
+        }
         // Feature 08: check for external changes whenever the app returns
         // to the foreground.
         .onChange(of: scenePhase) { oldPhase, newPhase in
@@ -133,7 +156,7 @@ struct EditorView: View {
             let outcome = SaveErrorModalGuard.evaluate(state: newValue, episodeActive: saveErrorEpisodeActive)
             saveErrorEpisodeActive = outcome.episodeActive
             if outcome.shouldShow {
-                showingSaveErrorModal = true
+                presentModal(.saveError)
             }
         }
         // Feature 07: show the iCloud-download modal whenever fileState
@@ -147,7 +170,7 @@ struct EditorView: View {
         // whatever the PREVIOUS document's gate state was.
         .onChange(of: store.fileState) { _, newValue in
             if newValue == .downloading {
-                showingICloudDownloadModal = true
+                presentModal(.iCloudDownload)
             }
             if newValue == .pending {
                 offlineWarningShownForCurrentFile = false
@@ -181,7 +204,7 @@ struct EditorView: View {
 
         offlineWarningShownForCurrentFile = true
         store.blockPendingCreation()
-        showingOfflineCopyWarningModal = true
+        presentModal(.offlineCopyWarning)
     }
 
     // MARK: - Foreground external-change check (Feature 08)
@@ -207,15 +230,15 @@ struct EditorView: View {
 
         case .modified:
             if store.isDirty {
-                showingConflictModal = true
+                presentModal(.conflict)
             } else {
                 // Feature 08: no unsaved edits — reload silently, no modal.
                 await reloadCurrentDocument()
             }
 
         case .deleted:
-            deletedFileVariant = store.isDirty ? .withUnsavedEdits : .withoutUnsavedEdits
-            showingDeletedFileModal = true
+            let variant: DeletedFileModal.Variant = store.isDirty ? .withUnsavedEdits : .withoutUnsavedEdits
+            presentModal(.deletedFile(variant))
         }
     }
 
@@ -543,7 +566,7 @@ struct EditorView: View {
                 .font(.caption)
             Spacer()
             Button(Feature0607ModalCopy.offlineCaptureBlockedReviewButton) {
-                showingOfflineCopyWarningModal = true
+                presentModal(.offlineCopyWarning)
             }
             .font(.caption)
         }
